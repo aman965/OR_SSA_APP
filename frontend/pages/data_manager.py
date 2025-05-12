@@ -1,16 +1,22 @@
+import os
+import sys
+import django
+from components.right_log_panel import show_right_log_panel
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BACKEND_PATH = os.path.abspath(os.path.join(BASE_DIR, "../backend"))
+sys.path.append(BACKEND_PATH)
+
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "orsaas_backend.settings")
+django.setup()
+
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-import sys
-import os
-
-# Add the parent directory to the Python path
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from components.right_log_panel import show_right_log_panel
+from core.models import Upload
 
 st.set_page_config(page_title="1. Data Manager", page_icon="📊")
 
-# Initialize session state for logs if not exists
 if "global_logs" not in st.session_state:
     st.session_state.global_logs = ["Data Manager initialized."]
 
@@ -33,36 +39,38 @@ dataset_name = st.text_input(
     help="Enter a custom name for your dataset"
 )
 
-# HOOK: This is where uploaded file should be saved to disk and entry pushed to Django Upload model.
+# HOOK: Save uploaded file and record in Upload model
 if st.button("Upload File"):
     if uploaded_file is not None:
-        # Use file name if no custom name provided
-        name = dataset_name if dataset_name else uploaded_file.name
-        
-        # Mock duplicate check
-        if name in ["delivery_data.csv", "order_batch.xlsx"]:
+        # Use custom name or file name
+        final_name = dataset_name if dataset_name else uploaded_file.name
+        # Prevent duplicate
+        if Upload.objects.filter(name=final_name).exists():
             st.warning("File with this name already exists.")
         else:
-            st.success(f"Uploaded successfully as {name}")
+            # Save file to media/uploads/
+            upload_dir = os.path.join('media', 'uploads')
+            os.makedirs(upload_dir, exist_ok=True)
+            file_path = os.path.join(upload_dir, uploaded_file.name)
+            with open(file_path, "wb") as f:
+                f.write(uploaded_file.getbuffer())
+            # Save to DB
+            rel_path = os.path.relpath(file_path, 'media')
+            Upload.objects.create(name=final_name, file=rel_path)
+            st.success(f"Uploaded successfully as {final_name}")
     else:
         st.error("Please select a file to upload")
 
 # Dataset Listing Section
 st.header("Uploaded Datasets")
-
-# HOOK: Replace mock table below with actual DB-driven upload listing
-# Mock data for the table
-mock_data = pd.DataFrame([
-    {"Name": "delivery_data.csv", "Uploaded At": "2024-05-11 12:34"},
-    {"Name": "order_batch.xlsx", "Uploaded At": "2024-05-11 13:21"}
-])
-
-# Display the table
-st.dataframe(
-    mock_data,
-    use_container_width=True,
-    hide_index=True
-)
+uploads = Upload.objects.all().order_by("-uploaded_at")
+if uploads.exists():
+    df = pd.DataFrame([
+        {"Name": u.name, "Uploaded At": u.uploaded_at.strftime("%Y-%m-%d %H:%M:%S")} for u in uploads
+    ])
+    st.dataframe(df, use_container_width=True, hide_index=True)
+else:
+    st.info("No uploads yet.")
 
 # Section 1: Upload Data
 st.header("Upload Data")

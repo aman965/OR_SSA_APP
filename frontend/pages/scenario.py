@@ -5,6 +5,13 @@ import time
 import sys
 import os
 
+# Add the backend directory to the Python path for Django ORM access
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../backend')))
+import django
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'orsaas_backend.settings')
+django.setup()
+from core.models import Snapshot, Scenario
+
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from components.right_log_panel import show_right_log_panel
@@ -28,13 +35,11 @@ st.title("Scenario Builder")
 # Section 1: Scenario Configuration
 st.header("Scenario Configuration")
 
-# Mock snapshot list
-snapshots = ["snap_2024_05_11", "order_batch_snap"]
-selected_snapshot = st.selectbox(
-    "Select a Snapshot",
-    snapshots,
-    help="Choose a snapshot to create a scenario from"
-)
+# Load snapshots from DB
+snapshots = Snapshot.objects.order_by("-created_at")
+snapshot_names = [s.name for s in snapshots]
+selected_snapshot_name = st.selectbox("Select Snapshot", snapshot_names) if snapshot_names else None
+snapshot_obj = Snapshot.objects.get(name=selected_snapshot_name) if selected_snapshot_name else None
 
 # Scenario name
 scenario_name = st.text_input(
@@ -95,13 +100,32 @@ gpt_prompt = st.text_area(
     help="Enter any specific modifications or constraints for the model"
 )
 
-# HOOK: Send GPT tweak prompt to backend and parse response
-if st.button("Send to GPT"):
-    if gpt_prompt:
-        st.session_state.global_logs.append(f"GPT prompt sent: {gpt_prompt[:50]}...")
-        st.info("GPT understood: 'Add constraint that no vehicle serves > 5 customers.'")
+# HOOK: Save scenario to DB and mark status as 'created'
+if st.button("Create Scenario"):
+    if not scenario_name:
+        st.error("Please enter a scenario name")
+    elif not snapshot_obj:
+        st.error("Please select a snapshot")
     else:
-        st.warning("Please enter a prompt for GPT")
+        # HOOK: Prevent duplicate scenario creation under same snapshot
+        if Scenario.objects.filter(name=scenario_name, snapshot=snapshot_obj).exists():
+            st.warning("Scenario with this name already exists for this snapshot.")
+        else:
+            # Save scenario to DB
+            Scenario.objects.create(
+                name=scenario_name,
+                snapshot=snapshot_obj,
+                param1=param1,
+                param2=param2,
+                param3=param3,
+                param4=param4,
+                param5=param5,
+                gpt_prompt=gpt_prompt,
+                gpt_response="Mock GPT response",  # Placeholder
+                status="created"
+            )
+            st.success(f"Scenario '{scenario_name}' created and linked to snapshot '{snapshot_obj.name}'.")
+            st.session_state.global_logs.append(f"Scenario '{scenario_name}' created for snapshot '{snapshot_obj.name}'.")
 
 # Section 3: Run Model Simulation
 st.header("Run Model")
@@ -110,22 +134,12 @@ st.header("Run Model")
 if st.button("Run Model"):
     if not scenario_name:
         st.error("Please enter a scenario name")
-    elif not selected_snapshot:
+    elif not selected_snapshot_name:
         st.error("Please select a snapshot")
     else:
         # Start timer
         st.session_state.start_time = time.time()
         st.session_state.model_solved = False
-        
-        # Add solver logs
-        solver_logs = [
-            "Starting solver...",
-            "Parsing scenario parameters...",
-            "Running CBC model...",
-            "Solution found: 3 routes",
-            "Saving results to /media/scenarios"
-        ]
-        st.session_state.global_logs.extend(solver_logs)
         
         # Show solving message
         solving_placeholder = st.empty()
@@ -138,31 +152,23 @@ if st.button("Run Model"):
         st.session_state.model_solved = True
         st.session_state.elapsed_time = time.time() - st.session_state.start_time
         solving_placeholder.success(f"✅ Model Solved Successfully in {st.session_state.elapsed_time:.1f} seconds")
-        st.session_state.global_logs.append(f"Model solved in {st.session_state.elapsed_time:.1f} seconds")
+        # Redirect to results if solved
+        if st.session_state.model_solved:
+            st.session_state["selected_snapshot_for_results"] = selected_snapshot_name
+            st.session_state["selected_scenario_for_results"] = scenario_name
+            st.success("Scenario solved! Redirecting to results...")
+            st.switch_page("view_results")
 
-# Show View Output button if model is solved
-if st.session_state.model_solved:
-    # HOOK: Save scenario status as 'solved' and enable output view
-    if st.button("View Output"):
-        st.session_state.global_logs.append("Viewing model output")
-        st.info("Model output would be displayed here")
-        # Mock output display
-        st.json({
-            "objective_value": 1234.56,
-            "solution_time": f"{st.session_state.elapsed_time:.1f} seconds",
-            "status": "optimal",
-            "constraints_satisfied": True
-        })
-
-# HOOK: Save scenario with parameters + GPT output to database
-if st.button("Create Scenario"):
-    if not scenario_name:
-        st.error("Please enter a scenario name")
-    elif not selected_snapshot:
-        st.error("Please select a snapshot")
-    else:
-        st.session_state.global_logs.append(f"Creating scenario: {scenario_name}")
-        st.success(f"Scenario '{scenario_name}' created successfully!")
+    # Show View Output button if model is solved
+    if st.session_state.model_solved:
+        if st.button("View Output"):
+            st.info("Model output would be displayed here")
+            st.json({
+                "objective_value": 1234.56,
+                "solution_time": f"{st.session_state.elapsed_time:.1f} seconds",
+                "status": "optimal",
+                "constraints_satisfied": True
+            })
 
 # Test Section for Session State
 st.header("Session State Test")
