@@ -3,6 +3,9 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 
+st.title("View Results Page")
+st.write("This page will show the model output.")
+
 st.set_page_config(page_title="View Results", page_icon="📊")
 
 # Read session state
