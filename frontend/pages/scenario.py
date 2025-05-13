@@ -28,11 +28,11 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../b
 import django
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'orsaas_backend.settings')
 django.setup()
-from core.models import Snapshot, Scenario
+from backend.core.models import Snapshot, Scenario
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from components.right_log_panel import show_right_log_panel
+from frontend.components.right_log_panel import show_right_log_panel
 
 st.set_page_config(page_title="3. Scenario Builder", page_icon="⚙️")
 
@@ -175,7 +175,7 @@ if st.button("Run Model"):
             st.session_state["selected_snapshot_for_results"] = selected_snapshot_name
             st.session_state["selected_scenario_for_results"] = scenario_name
             st.success("Scenario solved! Redirecting to results...")
-            safe_switch_page("view_results")
+            safe_switch_page("pages/view_results.py")
 
     # Show View Output button if model is solved
     if st.session_state.model_solved:

@@ -7,7 +7,7 @@ import os
 
 # Add the parent directory to the Python path
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from components.right_log_panel import show_right_log_panel
+from frontend.components.right_log_panel import show_right_log_panel
 
 st.set_page_config(page_title="Compare Outputs", page_icon="🔀")
 

@@ -1,19 +1,19 @@
 import os
 import sys
 import django
-from components.right_log_panel import show_right_log_panel
+from frontend.components.right_log_panel import show_right_log_panel
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BACKEND_PATH = os.path.abspath(os.path.join(BASE_DIR, "../backend"))
 sys.path.append(BACKEND_PATH)
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "orsaas_backend.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "backend.django_settings")
 django.setup()
 
 import streamlit as st
 import pandas as pd
 from datetime import datetime
-from core.models import Upload
+from backend.core.models import Upload
 
 st.set_page_config(page_title="1. Data Manager", page_icon="📊")
 

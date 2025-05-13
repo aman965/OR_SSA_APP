@@ -7,9 +7,9 @@ import os
 # Add the backend directory to the Python path for Django ORM access
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../backend')))
 import django
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'orsaas_backend.settings')
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'backend.django_settings')
 django.setup()
-from core.models import Upload, Snapshot
+from backend.core.models import Upload, Snapshot
 
 from django.conf import settings
 
@@ -80,7 +80,7 @@ for snap in snapshots:
                         st.session_state.global_logs.append(f"View Results for {snap.name} - {scenario.name}")
                         st.write("Selected Snapshot:", snap.name)
                         st.write("Selected Scenario:", scenario.name)
-                        st.switch_page("view_results")
+                        st.switch_page("pages/view_results.py")
                 elif scenario.status == "failed":
                     st.button("Failed", disabled=True, help=scenario.reason or "No reason provided", key=f"fail_{snap.name}_{scenario.name}")
                     st.write("Selected Snapshot:", snap.name)
@@ -96,5 +96,5 @@ if st.sidebar.checkbox("Show Debug Info", value=False):
         st.markdown("### Session State")
         st.json(st.session_state)
 
-from components.right_log_panel import show_right_log_panel
+from frontend.components.right_log_panel import show_right_log_panel
 show_right_log_panel(["Snapshots page loaded."]) 
