@@ -175,7 +175,7 @@ if st.button("Run Model"):
             st.session_state["selected_snapshot_for_results"] = selected_snapshot_name
             st.session_state["selected_scenario_for_results"] = scenario_name
             st.success("Scenario solved! Redirecting to results...")
-            safe_switch_page("pages/view_results.py")
+            st.switch_page("view_results")
 
     # Show View Output button if model is solved
     if st.session_state.model_solved:
