@@ -28,36 +28,64 @@ if st.checkbox("Simulate upload success", value=True):
 
 # File Upload Section
 st.header("Upload Dataset")
+
+# File uploader with type restriction
 uploaded_file = st.file_uploader(
     "Choose a file",
     type=['csv', 'xlsx'],
     help="Upload .csv or .xlsx files"
 )
 
+# Dataset name input
 dataset_name = st.text_input(
-    "Dataset Name",
-    help="Enter a custom name for your dataset"
+    "Dataset Name (optional)",
+    help="Enter a custom name for your dataset. If left blank, will use the file name."
 )
 
-# HOOK: Save uploaded file and record in Upload model
-if st.button("Upload File"):
+# Upload button and processing
+if st.button("Upload Dataset"):
     if uploaded_file is not None:
-        # Use custom name or file name
-        final_name = dataset_name if dataset_name else uploaded_file.name
-        # Prevent duplicate
+        # Get file extension and determine type
+        file_ext = uploaded_file.name.split('.')[-1].lower()
+        
+        # Use custom name or file name without extension
+        final_name = dataset_name.strip() if dataset_name else uploaded_file.name.rsplit(".", 1)[0]
+        
+        # Prevent duplicate names
         if Upload.objects.filter(name=final_name).exists():
-            st.warning("File with this name already exists.")
+            st.warning(f"Dataset name '{final_name}' already exists. Please choose a different name.")
         else:
-            # Save file to media/uploads/
-            upload_dir = os.path.join('media', 'uploads')
-            os.makedirs(upload_dir, exist_ok=True)
-            file_path = os.path.join(upload_dir, uploaded_file.name)
-            with open(file_path, "wb") as f:
-                f.write(uploaded_file.getbuffer())
-            # Save to DB
-            rel_path = os.path.relpath(file_path, 'media')
-            Upload.objects.create(name=final_name, file=rel_path)
-            st.success(f"Uploaded successfully as {final_name}")
+            try:
+                # Create upload directory if it doesn't exist
+                upload_dir = os.path.join('media', 'uploads')
+                os.makedirs(upload_dir, exist_ok=True)
+                
+                # Save file with original extension
+                file_path = os.path.join(upload_dir, f"{final_name}.{file_ext}")
+                with open(file_path, "wb") as f:
+                    f.write(uploaded_file.getbuffer())
+                
+                # Save to database using Django ORM
+                rel_path = os.path.relpath(file_path, 'media')
+                Upload.objects.create(
+                    name=final_name,
+                    file=rel_path
+                )
+                
+                st.success(f"✅ Dataset '{final_name}' uploaded successfully!")
+                st.session_state.global_logs.append(f"Uploaded dataset: {final_name}")
+                
+                # Preview uploaded data
+                if file_ext == 'csv':
+                    df = pd.read_csv(file_path)
+                else:  # xlsx
+                    df = pd.read_excel(file_path)
+                st.write("Preview of uploaded data:")
+                st.dataframe(df.head(), use_container_width=True)
+                
+            except Exception as e:
+                st.error(f"Error uploading file: {str(e)}")
+                st.session_state.global_logs.append(f"Upload failed: {str(e)}")
     else:
         st.error("Please select a file to upload")
 
@@ -66,47 +94,52 @@ st.header("Uploaded Datasets")
 uploads = Upload.objects.all().order_by("-uploaded_at")
 if uploads.exists():
     df = pd.DataFrame([
-        {"Name": u.name, "Uploaded At": u.uploaded_at.strftime("%Y-%m-%d %H:%M:%S")} for u in uploads
+        {
+            "Name": u.name,
+            "File Type": u.file.name.split('.')[-1].upper(),
+            "Uploaded At": u.uploaded_at.strftime("%Y-%m-%d %H:%M:%S"),
+            "File Path": u.file.name
+        } for u in uploads
     ])
     st.dataframe(df, use_container_width=True, hide_index=True)
 else:
-    st.info("No uploads yet.")
+    st.info("No datasets uploaded yet.")
 
-# Section 2: Data Preview
-st.header("Data Preview")
-
-# Mock data for preview
-data = {
-    'Date': pd.date_range(start='2024-01-01', periods=5),
-    'Order ID': range(1001, 1006),
-    'Customer': ['Customer A', 'Customer B', 'Customer C', 'Customer D', 'Customer E'],
-    'Status': ['Pending', 'Completed', 'Pending', 'Completed', 'Pending']
-}
-df = pd.DataFrame(data)
-
-# Display dataframe
-st.dataframe(df)
-
-# Section 3: Data Management
+# Data Management Section
 st.header("Data Management")
 
-# Action buttons
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    if st.button("Refresh Data"):
-        st.session_state.global_logs.append("Data refresh requested")
-        st.info("Data refresh would be triggered here")
+    if st.button("Refresh List"):
+        st.session_state.global_logs.append("Dataset list refreshed")
+        st.rerun()
 
 with col2:
-    if st.button("Export Data"):
-        st.session_state.global_logs.append("Data export requested")
-        st.info("Data export would be triggered here")
+    if st.button("Export List"):
+        if uploads.exists():
+            export_df = pd.DataFrame([
+                {
+                    "Name": u.name,
+                    "File Type": u.file.name.split('.')[-1].upper(),
+                    "Uploaded At": u.uploaded_at.strftime("%Y-%m-%d %H:%M:%S"),
+                    "File Path": u.file.name
+                } for u in uploads
+            ])
+            st.session_state.global_logs.append("Dataset list exported")
+            st.download_button(
+                "Download Dataset List",
+                export_df.to_csv(index=False).encode('utf-8'),
+                "dataset_list.csv",
+                "text/csv"
+            )
+        else:
+            st.info("No datasets to export")
 
 with col3:
-    if st.button("Clear Data"):
-        st.session_state.global_logs.append("Data clear requested")
-        st.info("Data clear would be triggered here")
+    if st.button("Delete Selected"):
+        st.warning("Delete functionality will be implemented in future updates")
+        st.session_state.global_logs.append("Delete operation requested (not implemented)")
 
 # Show the right log panel
 show_right_log_panel(st.session_state.global_logs)
