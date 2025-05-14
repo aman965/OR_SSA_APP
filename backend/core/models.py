@@ -13,6 +13,7 @@ class Upload(models.Model):
 class Snapshot(models.Model):
     name = models.CharField(max_length=255, unique=True)
     linked_upload = models.ForeignKey(Upload, on_delete=models.CASCADE)
+    description = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

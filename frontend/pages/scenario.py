@@ -7,19 +7,7 @@ import os
 
 def safe_switch_page(page_name):
     try:
-        pages_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "pages"))
-        available_pages = [f[:-3] for f in os.listdir(pages_dir) if f.endswith(".py")]
-        full_path = os.path.join(pages_dir, f"{page_name}.py")
-
-        st.sidebar.write("🧭 Pages Available:", available_pages)
-        st.sidebar.write(f"🔍 Checking existence of: {full_path}")
-        st.sidebar.write(f"✅ File Exists: {os.path.exists(full_path)}")
-
-        if page_name in available_pages:
-            st.success(f"Switching to: {page_name}")
-            st.switch_page(page_name)
-        else:
-            st.error(f"❌ Page '{page_name}' not found. Ensure it exists in 'pages/' and ends with '.py'")
+        st.switch_page(f"pages/{page_name}.py")
     except Exception as e:
         st.exception(f"🚨 Unexpected error in safe_switch_page: {e}")
 

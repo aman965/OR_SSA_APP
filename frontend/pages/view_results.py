@@ -1,12 +1,12 @@
 import streamlit as st
+st.set_page_config(page_title="View Results", page_icon="📊")
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+import io
 
 st.title("View Results Page")
 st.write("This page will show the model output.")
-
-st.set_page_config(page_title="View Results", page_icon="📊")
 
 # Read session state
 snapshot = st.session_state.get("selected_snapshot_for_results")
@@ -39,9 +39,11 @@ with tabs[0]:
     # Download buttons for Routes
     col1, col2 = st.columns(2)
     with col1:
+        excel_buffer = io.BytesIO()
+        routes_data.to_excel(excel_buffer, index=False)
         st.download_button(
             "Download Routes (XLSX)",
-            routes_data.to_excel(index=False).encode('utf-8'),
+            excel_buffer.getvalue(),
             "routes.xlsx",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
@@ -66,9 +68,11 @@ with tabs[0]:
     # Download buttons for Utilization
     col1, col2 = st.columns(2)
     with col1:
+        excel_buffer_util = io.BytesIO()
+        utilization_data.to_excel(excel_buffer_util, index=False)
         st.download_button(
             "Download Utilization (XLSX)",
-            utilization_data.to_excel(index=False).encode('utf-8'),
+            excel_buffer_util.getvalue(),
             "utilization.xlsx",
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )

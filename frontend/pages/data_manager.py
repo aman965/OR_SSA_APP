@@ -72,21 +72,6 @@ if uploads.exists():
 else:
     st.info("No uploads yet.")
 
-# Section 1: Upload Data
-st.header("Upload Data")
-
-# File uploader
-uploaded_file = st.file_uploader(
-    "Upload your data file",
-    type=["csv", "xlsx"],
-    help="Upload a CSV or Excel file containing your data"
-)
-
-if uploaded_file is not None:
-    st.session_state.global_logs.append(f"File uploaded: {uploaded_file.name}")
-    # HOOK: Send file to backend for processing
-    st.success(f"File {uploaded_file.name} uploaded successfully!")
-
 # Section 2: Data Preview
 st.header("Data Preview")
 
