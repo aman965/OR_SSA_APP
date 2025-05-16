@@ -49,12 +49,16 @@ try:
         st.stop()
 
     # Load solution data
-    solution_path = os.path.join(MEDIA_ROOT, "scenarios", str(scenario.id), "solution_summary.json")
+    solution_path = os.path.join(MEDIA_ROOT, "scenarios", str(scenario.id), "outputs", "solution_summary.json")
     if not os.path.exists(solution_path):
-        st.error(f"Solution file not found for scenario '{scenario.name}'")
-        if st.button("Back to Scenario Builder"):
-            st.switch_page("pages/scenario_builder.py")
-        st.stop()
+        alt_solution_path = os.path.join(MEDIA_ROOT, "scenarios", str(scenario.id), "solution_summary.json")
+        if os.path.exists(alt_solution_path):
+            solution_path = alt_solution_path
+        else:
+            st.error(f"Solution file not found for scenario '{scenario.name}'")
+            if st.button("Back to Scenario Builder"):
+                st.switch_page("pages/scenario_builder.py")
+            st.stop()
 
     with open(solution_path, 'r') as f:
         solution = json.load(f)
@@ -157,4 +161,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state) 
+        st.json(st.session_state)   

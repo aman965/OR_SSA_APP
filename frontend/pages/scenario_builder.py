@@ -45,11 +45,13 @@ def run_model_for_scenario(scenario_id):
         scenario.status = "solving"
         scenario.reason = ""
         scenario.save()
-        st.rerun() 
+        # st.rerun() 
 
         scenario_dir = os.path.join(MEDIA_ROOT, "scenarios", str(scenario.id))
+        output_dir = os.path.join(scenario_dir, "outputs")
         os.makedirs(scenario_dir, exist_ok=True)
-        st.session_state.global_logs.append(f"Created directory: {scenario_dir}")
+        os.makedirs(output_dir, exist_ok=True)
+        st.session_state.global_logs.append(f"Created directories: {scenario_dir} and {output_dir}")
 
         scenario_data = {
             "scenario_id": scenario.id,
@@ -78,18 +80,39 @@ def run_model_for_scenario(scenario_id):
         try:
             solver_path = os.path.join(BACKEND_PATH, "solver", "vrp_solver.py")
             result = subprocess.run(
-                ["python", solver_path, "--scenario-path", scenario_json_path],
+                [sys.executable, solver_path, "--scenario-path", scenario_json_path],
                 check=True,
                 capture_output=True,
-                text=True
+                text=True,
+                timeout=180  # Add timeout to prevent infinite runs
             )
-            st.session_state.global_logs.append("VRP solver completed successfully")
+            st.session_state.global_logs.append(f"VRP solver output: {result.stdout}")
             
-            # Check for solution or failure files
-            solution_path = os.path.join(scenario_dir, "solution_summary.json")
-            failure_path = os.path.join(scenario_dir, "failure_summary.json")
+            # Check for solution or failure files in both output_dir and scenario_dir
+            solution_path = os.path.join(output_dir, "solution_summary.json")
+            alt_solution_path = os.path.join(scenario_dir, "solution_summary.json")
+            failure_path = os.path.join(output_dir, "failure_summary.json")
+            alt_failure_path = os.path.join(scenario_dir, "failure_summary.json")
             
+            # Check for solution file in both locations
             if os.path.exists(solution_path):
+                with open(solution_path, 'r') as f:
+                    solution = json.load(f)
+                scenario.status = "solved"
+                scenario.reason = ""
+                progress_bar.empty()
+                st.success(f"✅ Model for scenario '{scenario.name}' solved successfully!")
+                st.session_state.global_logs.append(f"Scenario {scenario.id} solved successfully.")
+                
+                # Prepare for redirect
+                redirect_to_results = True
+                snapshot_name_for_redirect = scenario.snapshot.name
+                scenario_name_for_redirect = scenario.name
+            elif os.path.exists(alt_solution_path):
+                import shutil
+                shutil.copy2(alt_solution_path, solution_path)
+                st.session_state.global_logs.append(f"Copied solution file from {alt_solution_path} to {solution_path}")
+                
                 with open(solution_path, 'r') as f:
                     solution = json.load(f)
                 scenario.status = "solved"
@@ -110,15 +133,54 @@ def run_model_for_scenario(scenario_id):
                 progress_bar.empty()
                 st.error(f"Model for scenario '{scenario.name}' failed. Reason: {scenario.reason}")
                 st.session_state.global_logs.append(f"Scenario {scenario.id} failed. Reason: {scenario.reason}")
+            elif os.path.exists(alt_failure_path):
+                import shutil
+                shutil.copy2(alt_failure_path, failure_path)
+                st.session_state.global_logs.append(f"Copied failure file from {alt_failure_path} to {failure_path}")
+                
+                with open(failure_path, 'r') as f:
+                    failure = json.load(f)
+                scenario.status = "failed"
+                scenario.reason = failure.get("message", "Unknown failure")
+                progress_bar.empty()
+                st.error(f"Model for scenario '{scenario.name}' failed. Reason: {scenario.reason}")
+                st.session_state.global_logs.append(f"Scenario {scenario.id} failed. Reason: {scenario.reason}")
             else:
-                raise FileNotFoundError("Neither solution nor failure file was created")
+                # Check for model.lp file in scenario directory
+                model_lp_path = os.path.join(scenario_dir, "model.lp")
+                if os.path.exists(model_lp_path):
+                    st.session_state.global_logs.append(f"Found model.lp file at {model_lp_path} but no solution or failure files")
+                    import shutil
+                    os.makedirs(output_dir, exist_ok=True)
+                    output_model_lp = os.path.join(output_dir, "model.lp")
+                    shutil.copy2(model_lp_path, output_model_lp)
+                    st.session_state.global_logs.append(f"Copied model.lp to {output_model_lp}")
+                    
+                    failure_data = {
+                        "status": "error",
+                        "message": "Model was created but solver did not produce output files"
+                    }
+                    with open(failure_path, 'w') as f:
+                        json.dump(failure_data, f, indent=4)
+                    
+                    scenario.status = "failed"
+                    scenario.reason = failure_data["message"]
+                    scenario.save()
+                    progress_bar.empty()
+                    st.error(f"Model for scenario '{scenario.name}' failed. {failure_data['message']}")
+                else:
+                    raise FileNotFoundError("Neither solution nor failure file was created")
                 
         except subprocess.CalledProcessError as e:
             scenario.status = "failed"
-            scenario.reason = f"Solver error: {e.stderr}"
+            error_msg = f"Solver error: {e.stderr}"
+            scenario.reason = error_msg
             progress_bar.empty()
-            st.error(f"Model for scenario '{scenario.name}' failed. Reason: {scenario.reason}")
-            st.session_state.global_logs.append(f"Scenario {scenario.id} failed. Reason: {scenario.reason}")
+            st.error(f"Model for scenario '{scenario.name}' failed. Reason: {error_msg}")
+            st.session_state.global_logs.append(f"Scenario {scenario.id} failed. Reason: {error_msg}")
+            if not os.path.exists(failure_path):
+                with open(failure_path, 'w') as f:
+                    json.dump({"status": "error", "message": error_msg}, f, indent=4)
         except Exception as e:
             scenario.status = "failed"
             scenario.reason = f"Error running solver: {str(e)}"
@@ -128,13 +190,21 @@ def run_model_for_scenario(scenario_id):
 
         # Fallback: If still 'solving' and no output files, mark as failed
         if scenario.status == "solving":
-            solution_path = os.path.join(scenario_dir, "solution_summary.json")
-            failure_path = os.path.join(scenario_dir, "failure_summary.json")
+            solution_path = os.path.join(output_dir, "solution_summary.json")
+            failure_path = os.path.join(output_dir, "failure_summary.json")
+            model_lp_path = os.path.join(output_dir, "model.lp")
+            
+            model_lp_exists = os.path.exists(model_lp_path)
+            st.session_state.global_logs.append(f"Model LP file exists: {model_lp_exists}")
+            
             if not os.path.exists(solution_path) and not os.path.exists(failure_path):
                 scenario.status = "failed"
-                scenario.reason = "Solver did not return any output files."
+                failure_reason = "Solver did not create any output files."
+                if model_lp_exists:
+                    failure_reason += " Model LP file was created but solving failed."
+                scenario.reason = failure_reason
                 scenario.save()
-                st.error(f"Model failed silently. No output files were created for scenario '{scenario.name}'.")
+                st.error(f"Model failed: {failure_reason}")
                 st.session_state.global_logs.append(f"Scenario {scenario.id} marked as failed due to missing outputs.")
 
         scenario.save()
@@ -331,4 +401,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False, key="scenario_builder_debug"):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state) 
+        st.json(st.session_state)              
