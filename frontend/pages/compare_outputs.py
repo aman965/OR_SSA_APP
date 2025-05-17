@@ -80,6 +80,7 @@ if compare_clicked:
         
         metrics = load_compare_metrics(scenario.id)
         if not metrics:
+            st.info(f"Generating comparison metrics for scenario '{scenario_name}'...")
             metrics = generate_compare_metrics(scenario.id)
         
         if metrics:
@@ -141,48 +142,92 @@ if compare_clicked:
     # Tab 2: KPI Comparison
     with tabs[1]:
         st.subheader("KPI Table and Radar Chart")
-        kpi_df = pd.DataFrame(kpis).T
-        st.dataframe(kpi_df)
-        # Radar chart
-        categories = list(kpi_df.columns)
-        fig = go.Figure()
+        
+        kpi_display_names = {
+            'total_distance': 'Total Distance (km)',
+            'total_routes': 'Total Routes',
+            'avg_route_distance': 'Avg Route Distance (km)',
+            'customers_served': 'Customers Served',
+            'max_route_length': 'Max Route Length',
+            'avg_utilization': 'Avg Utilization (%)'
+        }
+        
+        formatted_kpis = {}
         for s in selected_scenarios:
+            formatted_kpis[s] = {}
+            for k, v in kpis[s].items():
+                display_name = kpi_display_names.get(k, k)
+                if isinstance(v, (int, float)):
+                    if k == 'avg_utilization':
+                        formatted_kpis[s][display_name] = f"{v:.1f}%"
+                    elif isinstance(v, float):
+                        formatted_kpis[s][display_name] = f"{v:.2f}"
+                    else:
+                        formatted_kpis[s][display_name] = v
+                else:
+                    formatted_kpis[s][display_name] = v
+        
+        kpi_df = pd.DataFrame(formatted_kpis)
+        st.dataframe(kpi_df)
+        
+        # Radar chart for KPIs (select numeric KPIs only)
+        numeric_kpis = ['total_distance', 'total_routes', 'avg_route_distance', 'customers_served', 'max_route_length', 'avg_utilization']
+        radar_df = pd.DataFrame({
+            scenario_name: [float(kpis[scenario_name].get(kpi, 0)) for kpi in numeric_kpis]
+            for scenario_name in selected_scenarios
+        }, index=[kpi_display_names.get(kpi, kpi) for kpi in numeric_kpis])
+        
+        radar_df_norm = radar_df.copy()
+        for idx in radar_df.index:
+            max_val = radar_df.loc[idx].max()
+            if max_val > 0:  # Avoid division by zero
+                radar_df_norm.loc[idx] = radar_df.loc[idx] / max_val
+            else:
+                radar_df_norm.loc[idx] = 0
+        
+        # Create radar chart
+        fig = go.Figure()
+        for scenario_name in selected_scenarios:
             fig.add_trace(go.Scatterpolar(
-                r=list(kpi_df.loc[s]),
-                theta=categories,
+                r=radar_df_norm[scenario_name].values,
+                theta=radar_df_norm.index,
                 fill='toself',
-                name=s
+                name=scenario_name
             ))
+        
         fig.update_layout(
-            polar=dict(radialaxis=dict(visible=True)),
+            polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
             showlegend=True,
-            title="KPI Radar Comparison"
+            title="KPI Comparison (Normalized)"
         )
         st.plotly_chart(fig, use_container_width=True)
 
     # Tab 3: Plot Comparison
     with tabs[2]:
         st.subheader("Bar Chart Comparison")
-        # Bar chart for KPI comparison
-        kpi_mapping = {
-            'Total Distance': 'total_distance',
-            'Avg Route Distance': 'avg_route_distance',
-            'Customers Served': 'customers_served'
+        
+        bar_kpis = ['total_distance', 'avg_route_distance', 'customers_served']
+        bar_kpi_names = [kpi_display_names.get(k, k) for k in bar_kpis]
+        
+        bar_data = {
+            'Scenario': selected_scenarios
         }
         
-        bar_df = pd.DataFrame({
-            'Scenario': selected_scenarios,
-            'Total Distance': [kpis[s].get(kpi_mapping['Total Distance'], 0) for s in selected_scenarios],
-            'Avg Route Distance': [kpis[s].get(kpi_mapping['Avg Route Distance'], 0) for s in selected_scenarios],
-            'Customers Served': [kpis[s].get(kpi_mapping['Customers Served'], 0) for s in selected_scenarios]
-        })
+        for kpi, display_name in zip(bar_kpis, bar_kpi_names):
+            bar_data[display_name] = [kpis[s].get(kpi, 0) for s in selected_scenarios]
+        
+        bar_df = pd.DataFrame(bar_data)
         
         fig_bar = px.bar(
             bar_df,
             x='Scenario',
-            y=['Total Distance', 'Avg Route Distance', 'Customers Served'],
+            y=bar_kpi_names,
             barmode='group',
-            title="Key Performance Indicators by Scenario"
+            title="Key Performance Indicators by Scenario",
+            labels={
+                'value': 'Value',
+                'variable': 'KPI'
+            }
         )
         st.plotly_chart(fig_bar, use_container_width=True)
 
@@ -197,4 +242,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state)                
+        st.json(st.session_state)                      
