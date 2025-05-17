@@ -70,7 +70,7 @@ if compare_clicked:
 
     # Load real data for each scenario
     import json
-    from components.file_utils import load_solution_summary
+    from components.file_utils import load_solution_summary, load_compare_metrics, generate_compare_metrics
     
     tables = {}
     kpis = {}
@@ -78,28 +78,42 @@ if compare_clicked:
     for scenario_name in selected_scenarios:
         scenario = Scenario.objects.get(name=scenario_name, snapshot=selected_snapshot)
         
-        solution_data = load_solution_summary(scenario.id)
+        metrics = load_compare_metrics(scenario.id)
+        if not metrics:
+            metrics = generate_compare_metrics(scenario.id)
         
-        if solution_data:
-            route_data = []
-            for route_id, route_info in solution_data.get('routes', {}).items():
-                route_data.append({
-                    'Route ID': route_id,
-                    'Stops': len(route_info.get('stops', [])),
-                    'Distance (km)': round(route_info.get('distance', 0), 2),
-                    'Duration (min)': round(route_info.get('duration', 0), 2)
+        if metrics:
+            if scenario.status == "solved":
+                solution_data = load_solution_summary(scenario.id)
+                route_data = []
+                if solution_data and 'routes' in solution_data:
+                    for i, route in enumerate(solution_data.get('routes', []), 1):
+                        if isinstance(route, list):
+                            route_data.append({
+                                'Route ID': f'R{i}',
+                                'Stops': len(route) - 2 if len(route) > 2 else 0,
+                                'Distance (km)': 0,  # We don't have individual route distances in this format
+                                'Duration (min)': 0  # We don't have duration in this format
+                            })
+                        elif isinstance(route, dict):
+                            route_data.append({
+                                'Route ID': f'R{i}',
+                                'Stops': len(route.get('stops', [])),
+                                'Distance (km)': round(route.get('distance', 0), 2),
+                                'Duration (min)': round(route.get('duration', 0), 2)
+                            })
+                tables[scenario_name] = pd.DataFrame(route_data)
+            else:
+                tables[scenario_name] = pd.DataFrame({
+                    'Route ID': ['N/A'],
+                    'Stops': [0],
+                    'Distance (km)': [0],
+                    'Duration (min)': [0]
                 })
             
-            tables[scenario_name] = pd.DataFrame(route_data)
-            
-            kpis[scenario_name] = {
-                'Total Distance': solution_data.get('total_distance', 0),
-                'Total Routes': len(solution_data.get('routes', {})),
-                'Max Route Length': solution_data.get('max_route_length', 0),
-                'Avg Utilization': solution_data.get('avg_utilization', 0)
-            }
+            kpis[scenario_name] = metrics.get('kpis', {})
         else:
-            st.warning(f"Could not load solution data for scenario '{scenario_name}'")
+            st.warning(f"Could not load metrics data for scenario '{scenario_name}'")
             tables[scenario_name] = pd.DataFrame({
                 'Route ID': ['N/A'],
                 'Stops': [0],
@@ -107,10 +121,12 @@ if compare_clicked:
                 'Duration (min)': [0]
             })
             kpis[scenario_name] = {
-                'Total Distance': 0,
-                'Total Routes': 0,
-                'Max Route Length': 0,
-                'Avg Utilization': 0
+                'total_distance': 0,
+                'total_routes': 0,
+                'avg_route_distance': 0,
+                'customers_served': 0,
+                'max_route_length': 0,
+                'avg_utilization': 0
             }
 
     # Tab 1: Tabular Comparison
@@ -150,15 +166,16 @@ if compare_clicked:
         # Bar chart for Total Distance
         bar_df = pd.DataFrame({
             'Scenario': selected_scenarios,
-            'Total Distance': [kpis[s]['Total Distance'] for s in selected_scenarios],
-            'Max Route Length': [kpis[s]['Max Route Length'] for s in selected_scenarios]
+            'Total Distance': [kpis[s]['total_distance'] for s in selected_scenarios],
+            'Avg Route Distance': [kpis[s]['avg_route_distance'] for s in selected_scenarios],
+            'Customers Served': [kpis[s]['customers_served'] for s in selected_scenarios]
         })
         fig_bar = px.bar(
             bar_df,
             x='Scenario',
-            y=['Total Distance', 'Max Route Length'],
+            y=['Total Distance', 'Avg Route Distance', 'Customers Served'],
             barmode='group',
-            title="Total Distance and Max Route Length by Scenario"
+            title="Key Performance Indicators by Scenario"
         )
         st.plotly_chart(fig_bar, use_container_width=True)
 
@@ -173,4 +190,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state)          
+        st.json(st.session_state)              

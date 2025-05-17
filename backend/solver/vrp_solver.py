@@ -132,6 +132,24 @@ def build_and_solve_vrp(scenario, df, output_dir):
         with open(os.path.join(output_dir, "solution_summary.json"), 'w') as f:
             json.dump(solution, f, indent=4)
         log(f"Solution written to solution_summary.json")
+        
+        compare_metrics = {
+            "scenario_id": os.path.basename(output_dir),
+            "snapshot_id": scenario.get("snapshot_id", ""),
+            "parameters": scenario.get("params", {}),
+            "kpis": {
+                "total_distance": total_distance,
+                "total_routes": len(routes),
+                "avg_route_distance": round(total_distance / len(routes), 2) if routes else 0,
+                "customers_served": sum(len(route) - 2 for route in routes) if routes else 0,
+                "max_route_length": max(len(route) - 2 for route in routes) if routes else 0,
+                "avg_utilization": round(sum(len(route) - 2 for route in routes) / (len(routes) * vehicle_capacity) * 100, 2) if routes else 0
+            },
+            "status": "solved"
+        }
+        with open(os.path.join(output_dir, "compare_metrics.json"), 'w') as f:
+            json.dump(compare_metrics, f, indent=4)
+        log(f"Comparison metrics written to compare_metrics.json")
     else:
         failure = {
             "status": LpStatus[prob.status],
@@ -141,6 +159,24 @@ def build_and_solve_vrp(scenario, df, output_dir):
         with open(os.path.join(output_dir, "failure_summary.json"), 'w') as f:
             json.dump(failure, f, indent=4)
         log(f"Failure written to failure_summary.json")
+        
+        compare_metrics = {
+            "scenario_id": os.path.basename(output_dir),
+            "snapshot_id": scenario.get("snapshot_id", ""),
+            "parameters": scenario.get("params", {}),
+            "kpis": {
+                "total_distance": 0,
+                "total_routes": 0,
+                "avg_route_distance": 0,
+                "customers_served": 0,
+                "max_route_length": 0,
+                "avg_utilization": 0
+            },
+            "status": "failed"
+        }
+        with open(os.path.join(output_dir, "compare_metrics.json"), 'w') as f:
+            json.dump(compare_metrics, f, indent=4)
+        log(f"Comparison metrics written to compare_metrics.json")
 
 
 def main():
@@ -173,7 +209,25 @@ def main():
         with open(os.path.join(output_dir, "failure_summary.json"), 'w') as f:
             json.dump(failure, f, indent=4)
         log(f"Failure written to failure_summary.json")
+        
+        compare_metrics = {
+            "scenario_id": os.path.basename(output_dir),
+            "snapshot_id": scenario.get("snapshot_id", "") if 'scenario' in locals() else "",
+            "parameters": scenario.get("params", {}) if 'scenario' in locals() else {},
+            "kpis": {
+                "total_distance": 0,
+                "total_routes": 0,
+                "avg_route_distance": 0,
+                "customers_served": 0,
+                "max_route_length": 0,
+                "avg_utilization": 0
+            },
+            "status": "error"
+        }
+        with open(os.path.join(output_dir, "compare_metrics.json"), 'w') as f:
+            json.dump(compare_metrics, f, indent=4)
+        log(f"Comparison metrics written to compare_metrics.json")
         sys.exit(1)
 
 if __name__ == "__main__":
-    main()    
+    main()          
