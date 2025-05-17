@@ -30,7 +30,7 @@ def get_snapshot_dir(snapshot_id):
 
 def get_scenario_dir(scenario_id):
     """Get the directory for a specific scenario"""
-    return ensure_directory_exists(os.path.join(get_scenarios_dir(), f"scenario__{scenario_id}"))
+    return ensure_directory_exists(os.path.join('media', 'scenarios', str(scenario_id)))
 
 def get_scenario_output_dir(scenario_id):
     """Get the output directory for a specific scenario"""
