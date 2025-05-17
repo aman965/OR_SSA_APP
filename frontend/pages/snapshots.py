@@ -1,15 +1,15 @@
 import sys
-from pathlib import Path
-
-# Add project root to Python path
-root_dir = Path(__file__).resolve().parent.parent.parent
-sys.path.insert(0, str(root_dir))
-
 import os
+from pathlib import Path
 import streamlit as st
 import pandas as pd
 from datetime import datetime
 import django
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+BACKEND_PATH = os.path.abspath(os.path.join(BASE_DIR, "../backend"))
+sys.path.append(BACKEND_PATH)
+
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'orsaas_backend.settings')
 django.setup()
 from core.models import Upload, Snapshot
@@ -125,4 +125,4 @@ if st.sidebar.checkbox("Show Debug Info", value=False):
         st.json(st.session_state)
 
 from components.right_log_panel import show_right_log_panel
-show_right_log_panel(["Snapshots page loaded."])  
+show_right_log_panel(["Snapshots page loaded."])    
