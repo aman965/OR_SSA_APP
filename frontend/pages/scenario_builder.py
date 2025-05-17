@@ -52,6 +52,11 @@ def run_model_for_scenario(scenario_id):
         os.makedirs(scenario_dir, exist_ok=True)
         os.makedirs(output_dir, exist_ok=True)
         st.session_state.global_logs.append(f"Created directories: {scenario_dir} and {output_dir}")
+        
+        # Initialize paths for solution and failure files to avoid scope issues
+        solution_path = os.path.join(output_dir, "solution_summary.json")
+        failure_path = os.path.join(output_dir, "failure_summary.json")
+        model_lp_path = os.path.join(output_dir, "model.lp")
 
         scenario_data = {
             "scenario_id": scenario.id,
@@ -89,9 +94,7 @@ def run_model_for_scenario(scenario_id):
             st.session_state.global_logs.append(f"VRP solver output: {result.stdout}")
             
             # Check for solution or failure files in both output_dir and scenario_dir
-            solution_path = os.path.join(output_dir, "solution_summary.json")
             alt_solution_path = os.path.join(scenario_dir, "solution_summary.json")
-            failure_path = os.path.join(output_dir, "failure_summary.json")
             alt_failure_path = os.path.join(scenario_dir, "failure_summary.json")
             
             # Check for solution file in both locations
@@ -190,9 +193,6 @@ def run_model_for_scenario(scenario_id):
 
         # Fallback: If still 'solving' and no output files, mark as failed
         if scenario.status == "solving":
-            solution_path = os.path.join(output_dir, "solution_summary.json")
-            failure_path = os.path.join(output_dir, "failure_summary.json")
-            model_lp_path = os.path.join(output_dir, "model.lp")
             
             model_lp_exists = os.path.exists(model_lp_path)
             st.session_state.global_logs.append(f"Model LP file exists: {model_lp_exists}")
@@ -401,4 +401,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False, key="scenario_builder_debug"):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state)              
+        st.json(st.session_state)                    
