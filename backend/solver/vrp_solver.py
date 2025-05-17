@@ -143,10 +143,13 @@ def main():
         scenario = load_scenario(scenario_path)
         output_dir = os.path.dirname(scenario_path)
         csv_path = scenario.get('dataset_file_path')
-        if not csv_path or not os.path.exists(csv_path):
-            raise FileNotFoundError(f"Dataset file not found: {csv_path}")
-        log(f"Loading snapshot CSV from {csv_path}")
-        df = load_snapshot_csv(csv_path)
+        if not csv_path:
+            raise FileNotFoundError("Dataset file path is empty or not specified")
+        normalized_path = os.path.normpath(csv_path)
+        if not os.path.exists(normalized_path):
+            raise FileNotFoundError(f"Dataset file not found: {csv_path} (normalized: {normalized_path})")
+        log(f"Loading snapshot CSV from {normalized_path}")
+        df = load_snapshot_csv(normalized_path)
         build_and_solve_vrp(scenario, df, output_dir)
     except Exception as e:
         log(f"Exception: {e}")
@@ -163,4 +166,4 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    main() 
+    main()  
