@@ -41,11 +41,11 @@ else:
     )
 
     selected_snapshot = Snapshot.objects.get(name=selected_snapshot_name)
-    scenarios = Scenario.objects.filter(snapshot=selected_snapshot, status="solved")
+    scenarios = Scenario.objects.filter(snapshot=selected_snapshot, status__in=["solved", "failed"])
     scenario_names = [s.name for s in scenarios]
 
     if not scenario_names:
-        st.warning(f"No solved scenarios found for snapshot '{selected_snapshot_name}'. Please solve scenarios first.")
+        st.warning(f"No processed scenarios found for snapshot '{selected_snapshot_name}'. Please run scenarios first.")
         selected_scenarios = []
         compare_clicked = False
     else:
@@ -173,4 +173,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state)        
+        st.json(st.session_state)          
