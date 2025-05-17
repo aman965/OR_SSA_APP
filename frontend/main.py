@@ -39,8 +39,8 @@ try:
 except ImportError:
     st.sidebar.warning("⚠️ Django not used or not installed.")
 
-st.title("OR SaaS App – UI Shell")
+st.title("OR SaaS App – Operations Research UI")
 
 pages_dir = os.path.join(os.path.dirname(__file__), "pages")
 available_pages = [f[:-3] for f in os.listdir(pages_dir) if f.endswith(".py")]
-st.sidebar.write("Available Pages:", available_pages) 
+st.sidebar.write("Available Pages:", available_pages)  
