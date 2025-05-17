@@ -163,13 +163,20 @@ if compare_clicked:
     # Tab 3: Plot Comparison
     with tabs[2]:
         st.subheader("Bar Chart Comparison")
-        # Bar chart for Total Distance
+        # Bar chart for KPI comparison
+        kpi_mapping = {
+            'Total Distance': 'total_distance',
+            'Avg Route Distance': 'avg_route_distance',
+            'Customers Served': 'customers_served'
+        }
+        
         bar_df = pd.DataFrame({
             'Scenario': selected_scenarios,
-            'Total Distance': [kpis[s]['total_distance'] for s in selected_scenarios],
-            'Avg Route Distance': [kpis[s]['avg_route_distance'] for s in selected_scenarios],
-            'Customers Served': [kpis[s]['customers_served'] for s in selected_scenarios]
+            'Total Distance': [kpis[s].get(kpi_mapping['Total Distance'], 0) for s in selected_scenarios],
+            'Avg Route Distance': [kpis[s].get(kpi_mapping['Avg Route Distance'], 0) for s in selected_scenarios],
+            'Customers Served': [kpis[s].get(kpi_mapping['Customers Served'], 0) for s in selected_scenarios]
         })
+        
         fig_bar = px.bar(
             bar_df,
             x='Scenario',
@@ -190,4 +197,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state)              
+        st.json(st.session_state)                
