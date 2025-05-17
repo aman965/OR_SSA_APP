@@ -71,7 +71,7 @@ def run_model_for_scenario(scenario_id):
                 "param5": scenario.param5,
             },
             "gpt_prompt": scenario.gpt_prompt,
-            "dataset_file_path": scenario.snapshot.linked_upload.file.path
+            "dataset_file_path": os.path.join(MEDIA_ROOT, scenario.snapshot.linked_upload.file.name)
         }
         scenario_json_path = os.path.join(scenario_dir, "scenario.json")
         with open(scenario_json_path, 'w') as f:
@@ -401,4 +401,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False, key="scenario_builder_debug"):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state)                    
+        st.json(st.session_state)                                        

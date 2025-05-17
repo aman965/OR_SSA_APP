@@ -36,8 +36,18 @@ def build_and_solve_vrp(scenario, df, output_dir):
     # Distance matrix: assume columns are node names or indices
     if 'distance' in df.columns:
         dist_matrix = df['distance'].values.reshape((n, n))
+    elif 'x' in df.columns and 'y' in df.columns:
+        log("Calculating distance matrix from x,y coordinates")
+        dist_matrix = [[0 for _ in range(n)] for _ in range(n)]
+        for i in range(n):
+            for j in range(n):
+                if i != j:
+                    dist_matrix[i][j] = ((df['x'][i] - df['x'][j])**2 + (df['y'][i] - df['y'][j])**2)**0.5
     else:
-        dist_matrix = df.iloc[:, :n].values
+        if df.shape[1] >= n:
+            dist_matrix = df.iloc[:, :n].values
+        else:
+            raise ValueError(f"CSV does not have enough columns for a distance matrix. Expected at least {n} columns or 'x'/'y' coordinates.")
 
     # Model
     prob = LpProblem("VRP", LpMinimize)
@@ -166,4 +176,4 @@ def main():
         sys.exit(1)
 
 if __name__ == "__main__":
-    main()  
+    main()    
