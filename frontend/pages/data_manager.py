@@ -14,6 +14,8 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 from core.models import Upload
+from django.conf import settings
+from django.core.files.base import ContentFile
 
 st.set_page_config(page_title="1. Data Manager", page_icon="📊")
 
@@ -56,30 +58,27 @@ if st.button("Upload Dataset"):
             st.warning(f"Dataset name '{final_name}' already exists. Please choose a different name.")
         else:
             try:
-                # Create upload directory if it doesn't exist
-                upload_dir = os.path.join('media', 'uploads')
+                # Create upload directory if it doesn't exist using absolute path
+                upload_dir = os.path.join(settings.MEDIA_ROOT, 'uploads')
                 os.makedirs(upload_dir, exist_ok=True)
                 
-                # Save file with original extension
-                file_path = os.path.join(upload_dir, f"{final_name}.{file_ext}")
-                with open(file_path, "wb") as f:
-                    f.write(uploaded_file.getbuffer())
+                file_content = ContentFile(uploaded_file.getbuffer())
                 
-                # Save to database using Django ORM
-                rel_path = os.path.relpath(file_path, 'media')
-                Upload.objects.create(
-                    name=final_name,
-                    file=rel_path
+                upload = Upload.objects.create(
+                    name=final_name
                 )
+                
+                upload.file.save(f"{final_name}.{file_ext}", file_content, save=True)
                 
                 st.success(f"✅ Dataset '{final_name}' uploaded successfully!")
                 st.session_state.global_logs.append(f"Uploaded dataset: {final_name}")
+                st.session_state.global_logs.append(f"File saved to: {upload.file.path}")
                 
                 # Preview uploaded data
                 if file_ext == 'csv':
-                    df = pd.read_csv(file_path)
+                    df = pd.read_csv(upload.file.path)
                 else:  # xlsx
-                    df = pd.read_excel(file_path)
+                    df = pd.read_excel(upload.file.path)
                 st.write("Preview of uploaded data:")
                 st.dataframe(df.head(), use_container_width=True)
                 
@@ -148,4 +147,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state) 
+        st.json(st.session_state)        
