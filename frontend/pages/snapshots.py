@@ -57,11 +57,27 @@ if st.button("Create Snapshot"):
     else:
         upload_obj = Upload.objects.get(name=selected_upload_name)
         # Create snapshot with description
-        Snapshot.objects.create(
+        snapshot = Snapshot.objects.create(
             name=snapshot_name,
             linked_upload=upload_obj,
             description=description
         )
+        
+        try:
+            import pandas as pd
+            from components.file_utils import save_snapshot_file
+            
+            if upload_obj.file.name.endswith('.csv'):
+                df = pd.read_csv(upload_obj.file.path)
+            else:  # xlsx
+                df = pd.read_excel(upload_obj.file.path)
+                
+            snapshot_path = save_snapshot_file(snapshot.id, df)
+            st.session_state.global_logs.append(f"Snapshot file created at: {snapshot_path}")
+        except Exception as e:
+            st.warning(f"Could not create physical snapshot file: {str(e)}")
+            st.session_state.global_logs.append(f"Error creating snapshot file: {str(e)}")
+            
         st.success(f"Snapshot '{snapshot_name}' created successfully.")
         st.session_state.global_logs.append(f"Snapshot '{snapshot_name}' created.")
 
@@ -109,4 +125,4 @@ if st.sidebar.checkbox("Show Debug Info", value=False):
         st.json(st.session_state)
 
 from components.right_log_panel import show_right_log_panel
-show_right_log_panel(["Snapshots page loaded."]) 
+show_right_log_panel(["Snapshots page loaded."])  
