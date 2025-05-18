@@ -219,17 +219,17 @@ if "selected_scenarios" in st.session_state.comparison_data and st.session_state
             for scenario_name in selected_scenarios:
                 try:
                     scenario = Scenario.objects.get(name=scenario_name, snapshot=selected_snapshot)
-                    st.write(f"Loading data for scenario: {scenario_name} (ID: {scenario.id})")
+                    # st.write(f"Loading data for scenario: {scenario_name} (ID: {scenario.id})")
                     
                     # Load metrics
                     metrics = load_compare_metrics(scenario.id)
-                    st.write(f"Loaded metrics: {metrics}")
+                    # st.write(f"Loaded metrics: {metrics}")
                     
                     if not metrics:
                         st.warning(f"No compare_metrics.json for scenario '{scenario_name}'")
                         # Generate metrics if not found
                         metrics = generate_compare_metrics(scenario.id)
-                        st.write(f"Generated metrics: {metrics}")
+                        # st.write(f"Generated metrics: {metrics}")
                     
                     # Always ensure we have KPIs
                     if not metrics or 'kpis' not in metrics:
@@ -249,7 +249,7 @@ if "selected_scenarios" in st.session_state.comparison_data and st.session_state
                     
                     # Load solution data
                     solution_data = load_solution_summary(scenario.id)
-                    st.write(f"Loaded solution data: {solution_data}")
+                    # st.write(f"Loaded solution data: {solution_data}")
                     
                     route_data = []
                     if solution_data and 'routes' in solution_data:
@@ -278,7 +278,7 @@ if "selected_scenarios" in st.session_state.comparison_data and st.session_state
                         })
                     
                     st.session_state.comparison_data["tables"][scenario_name] = pd.DataFrame(route_data)
-                    st.write(f"Created route table with {len(route_data)} routes")
+                    # st.write(f"Created route table with {len(route_data)} routes")
                     
                 except Exception as e:
                     st.error(f"Error loading data for scenario '{scenario_name}': {str(e)}")

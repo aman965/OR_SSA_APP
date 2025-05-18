@@ -108,21 +108,26 @@ def build_and_solve_vrp(scenario, df, output_dir):
         total_distance = value(prob.objective)
         routes = []
         for v in range(vehicle_count):
-            route = [depot]
+            route = [int(depot)]  # ensure native int
             current = depot
             visited = set([depot])
             while True:
                 next_nodes = [j for j in nodes if j != current and value(x[current, j, v]) > 0.5]
                 if not next_nodes:
                     break
-                next_node = next_nodes[0]
+                next_node = int(next_nodes[0])  # ensure int
                 route.append(next_node)
                 visited.add(next_node)
                 current = next_node
                 if current == depot:
                     break
             if len(route) > 1:
-                routes.append(route)
+                route_distance = sum(float(dist_matrix[int(route[i])][int(route[i+1])]) for i in range(len(route)-1))
+                routes.append({
+                    "stops": [int(node) for node in route],  # convert entire list
+                    "distance": round(float(route_distance), 2),
+                    "duration": round(float(route_distance * 1.5), 2)
+                })
         solution = {
             "status": "optimal",
             "total_distance": total_distance,

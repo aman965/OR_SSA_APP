@@ -96,21 +96,33 @@ try:
 
     # Routes Table
     st.subheader("Route Details")
-    routes_data = []
-    for i, route in enumerate(solution['routes'], 1):
-        route_distance = sum(
-            abs(route[j] - route[j+1])  # Simple distance calculation
-            for j in range(len(route)-1)
-        )
-        routes_data.append({
-            "Route": f"R{i}",
-            "Stops": len(route) - 2,  # Exclude depot start/end
-            "Distance (km)": route_distance,
-            "Sequence": " → ".join(str(node) for node in route)
-        })
-    
-    routes_df = pd.DataFrame(routes_data)
-    st.dataframe(routes_df, use_container_width=True)
+    try:
+        route_rows = []
+        for i, route in enumerate(solution.get("routes", []), 1):
+            route_id = f"R{i}"
+            # Handle both old (list) and new (dict) route formats
+            if isinstance(route, dict):
+                stops = len(route.get("stops", [])) - 2 if len(route.get("stops", [])) > 2 else 0
+                distance = round(route.get("distance", 0), 2)
+                duration = round(route.get("duration", 0), 2)
+                sequence = " → ".join(str(node) for node in route.get("stops", []))
+            else:
+                stops = len(route) - 2 if len(route) > 2 else 0
+                distance = None
+                duration = None
+                sequence = " → ".join(str(node) for node in route)
+            route_rows.append({
+                "Route ID": route_id,
+                "Stops": stops,
+                "Distance (km)": distance,
+                "Duration (min)": duration,
+                "Sequence": sequence
+            })
+        st.dataframe(pd.DataFrame(route_rows), use_container_width=True)
+    except Exception as e:
+        st.error(f"⚠️ Error loading Route Details: {e}")
+        import traceback
+        st.code(traceback.format_exc())
 
     # Visualizations
     st.subheader("Route Analysis")
@@ -119,8 +131,8 @@ try:
     with viz_cols[0]:
         # Distance per Route Bar Chart
         fig_distance = px.bar(
-            routes_df,
-            x="Route",
+            pd.DataFrame(route_rows),
+            x="Route ID",
             y="Distance (km)",
             title="Distance per Route",
             color="Distance (km)",
@@ -131,8 +143,8 @@ try:
     with viz_cols[1]:
         # Stops per Route Bar Chart
         fig_stops = px.bar(
-            routes_df,
-            x="Route",
+            pd.DataFrame(route_rows),
+            x="Route ID",
             y="Stops",
             title="Stops per Route",
             color="Stops",

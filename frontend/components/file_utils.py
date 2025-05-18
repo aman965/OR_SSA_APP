@@ -3,6 +3,8 @@ import json
 import datetime
 import pandas as pd
 
+MEDIA_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../media"))
+
 def ensure_directory_exists(directory_path):
     """Ensure a directory exists, creating it if necessary"""
     os.makedirs(directory_path, exist_ok=True)
@@ -78,12 +80,21 @@ def save_solution_summary(scenario_id, solution_data):
     return file_path
 
 def load_solution_summary(scenario_id):
-    """Load solution summary data"""
-    output_dir = get_scenario_output_dir(scenario_id)
-    file_path = os.path.join(output_dir, "solution_summary.json")
-    if os.path.exists(file_path):
-        with open(file_path, 'r') as f:
-            return json.load(f)
+    """
+    Load solution_summary.json from scenario output folder.
+    Try both root and 'outputs' subfolder for flexibility.
+    """
+    paths_to_try = [
+        os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "solution_summary.json"),
+        os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "outputs", "solution_summary.json"),
+    ]
+    for path in paths_to_try:
+        if os.path.exists(path):
+            try:
+                with open(path, 'r') as f:
+                    return json.load(f)
+            except Exception as e:
+                print(f"[load_solution_summary] Failed to load {path}: {e}")
     return None
 
 def save_failure_summary(scenario_id, failure_data):
