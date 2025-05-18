@@ -21,15 +21,31 @@ from core.models import Snapshot, Scenario
 from components.right_log_panel import show_right_log_panel
 from components.file_utils import load_solution_summary, load_compare_metrics, generate_compare_metrics, get_scenario_output_dir
 
+def reset_stuck_scenarios():
+    """Reset scenarios that have been stuck in 'solving' state for too long"""
+    try:
+        stuck_scenarios = Scenario.objects.filter(status="solving")
+        if stuck_scenarios.exists():
+            for scenario in stuck_scenarios:
+                scenario.status = "failed"
+                scenario.reason = "Reset: Scenario was stuck in solving state"
+                scenario.save()
+                st.session_state.global_logs.append(f"Reset stuck scenario: {scenario.name} (ID: {scenario.id})")
+    except Exception as e:
+        st.session_state.global_logs.append(f"Error resetting stuck scenarios: {str(e)}")
+
 st.set_page_config(page_title="Compare Outputs", page_icon="🔀")
 
 if "global_logs" not in st.session_state:
     st.session_state.global_logs = ["Compare Outputs page initialized."]
 
+# Reset any stuck scenarios when loading the page
+reset_stuck_scenarios()
+
 st.title("Compare Scenario Outputs")
 
 def find_all_metrics_files():
-    """Scan media/scenarios/ for all compare_metrics.json files"""
+    """Scan media/scenarios/ for all compare_metrics.json files (directly in scenario folder)"""
     metrics_files = []
     scenarios_dir = os.path.join(MEDIA_ROOT, "scenarios")
     
@@ -37,30 +53,29 @@ def find_all_metrics_files():
         st.session_state.global_logs.append(f"Scenarios directory not found: {scenarios_dir}")
         return metrics_files
     
-    pattern = os.path.join(scenarios_dir, "*", "outputs", "compare_metrics.json")
+    pattern = os.path.join(scenarios_dir, "*", "compare_metrics.json")
     metrics_files = glob.glob(pattern)
     
     st.session_state.global_logs.append(f"Found {len(metrics_files)} metrics files")
     return metrics_files
 
 def load_metrics_data(metrics_files):
-    """Load metrics data from all found files"""
+    """Load metrics data from all found files, with fallback for missing/empty kpis"""
     metrics_data = []
-    
+    default_kpis = {k: 0 for k in ['total_distance', 'total_routes', 'avg_route_distance', 'customers_served', 'max_route_length', 'avg_utilization']}
     for file_path in metrics_files:
         try:
             with open(file_path, 'r') as f:
                 metrics = json.load(f)
-                
-            scenario_id = os.path.basename(os.path.dirname(os.path.dirname(file_path)))
-            
+            scenario_id = os.path.basename(os.path.dirname(file_path))
             metrics['file_path'] = file_path
             metrics['scenario_id'] = scenario_id
-            
+            # Fallback for missing/empty kpis
+            if 'kpis' not in metrics or not metrics['kpis']:
+                metrics['kpis'] = default_kpis.copy()
             metrics_data.append(metrics)
         except Exception as e:
             st.session_state.global_logs.append(f"Error loading metrics file {file_path}: {str(e)}")
-    
     return metrics_data
 
 def scan_for_scenarios_with_metrics():
@@ -72,7 +87,6 @@ def scan_for_scenarios_with_metrics():
     for scenario in all_scenarios:
         output_dir = get_scenario_output_dir(scenario.id)
         metrics_path = os.path.join(output_dir, "compare_metrics.json")
-        
         if os.path.exists(metrics_path):
             scenarios_with_metrics.append(scenario)
             st.session_state.global_logs.append(f"Found metrics for scenario {scenario.name} (ID: {scenario.id})")
@@ -205,47 +219,67 @@ if "selected_scenarios" in st.session_state.comparison_data and st.session_state
             for scenario_name in selected_scenarios:
                 try:
                     scenario = Scenario.objects.get(name=scenario_name, snapshot=selected_snapshot)
+                    st.write(f"Loading data for scenario: {scenario_name} (ID: {scenario.id})")
                     
+                    # Load metrics
                     metrics = load_compare_metrics(scenario.id)
-                    if not metrics:
-                        st.info(f"Generating comparison metrics for scenario '{scenario_name}'...")
-                        metrics = generate_compare_metrics(scenario.id)
-                        if metrics:
-                            st.session_state.global_logs.append(f"Generated metrics for scenario {scenario_name}")
-                        else:
-                            st.warning(f"Failed to generate metrics for scenario '{scenario_name}'")
-                            continue
+                    st.write(f"Loaded metrics: {metrics}")
                     
-                    if scenario.status == "solved":
-                        solution_data = load_solution_summary(scenario.id)
-                        route_data = []
-                        if solution_data and 'routes' in solution_data:
-                            for i, route in enumerate(solution_data.get('routes', []), 1):
-                                if isinstance(route, list):
-                                    route_data.append({
-                                        'Route ID': f'R{i}',
-                                        'Stops': len(route) - 2 if len(route) > 2 else 0,
-                                        'Distance (km)': 0,  # We don't have individual route distances in this format
-                                        'Duration (min)': 0  # We don't have duration in this format
-                                    })
-                                elif isinstance(route, dict):
-                                    route_data.append({
-                                        'Route ID': f'R{i}',
-                                        'Stops': len(route.get('stops', [])),
-                                        'Distance (km)': round(route.get('distance', 0), 2),
-                                        'Duration (min)': round(route.get('duration', 0), 2)
-                                    })
-                        st.session_state.comparison_data["tables"][scenario_name] = pd.DataFrame(route_data)
-                    else:
-                        st.session_state.comparison_data["tables"][scenario_name] = pd.DataFrame({
-                            'Route ID': ['N/A'],
-                            'Stops': [0],
-                            'Distance (km)': [0],
-                            'Duration (min)': [0]
-                        })
+                    if not metrics:
+                        st.warning(f"No compare_metrics.json for scenario '{scenario_name}'")
+                        # Generate metrics if not found
+                        metrics = generate_compare_metrics(scenario.id)
+                        st.write(f"Generated metrics: {metrics}")
+                    
+                    # Always ensure we have KPIs
+                    if not metrics or 'kpis' not in metrics:
+                        metrics = {
+                            'kpis': {
+                                'total_distance': 0,
+                                'total_routes': 0,
+                                'avg_route_distance': 0,
+                                'customers_served': 0,
+                                'max_route_length': 0,
+                                'avg_utilization': 0
+                            }
+                        }
                     
                     st.session_state.comparison_data["kpis"][scenario_name] = metrics.get('kpis', {})
                     st.session_state.global_logs.append(f"Loaded KPIs for scenario {scenario_name}: {metrics.get('kpis', {})}")
+                    
+                    # Load solution data
+                    solution_data = load_solution_summary(scenario.id)
+                    st.write(f"Loaded solution data: {solution_data}")
+                    
+                    route_data = []
+                    if solution_data and 'routes' in solution_data:
+                        for i, route in enumerate(solution_data.get('routes', []), 1):
+                            if isinstance(route, list):
+                                route_data.append({
+                                    'Route ID': f'R{i}',
+                                    'Stops': len(route) - 2 if len(route) > 2 else 0,
+                                    'Distance (km)': 'N/A',
+                                    'Duration (min)': 'N/A'
+                                })
+                            elif isinstance(route, dict):
+                                route_data.append({
+                                    'Route ID': f'R{i}',
+                                    'Stops': len(route.get('stops', [])),
+                                    'Distance (km)': round(route.get('distance', 0), 2) if 'distance' in route else 'N/A',
+                                    'Duration (min)': round(route.get('duration', 0), 2) if 'duration' in route else 'N/A'
+                                })
+                    else:
+                        # Always show at least an empty table with headers
+                        route_data.append({
+                            'Route ID': 'N/A',
+                            'Stops': 0,
+                            'Distance (km)': 'N/A',
+                            'Duration (min)': 'N/A'
+                        })
+                    
+                    st.session_state.comparison_data["tables"][scenario_name] = pd.DataFrame(route_data)
+                    st.write(f"Created route table with {len(route_data)} routes")
+                    
                 except Exception as e:
                     st.error(f"Error loading data for scenario '{scenario_name}': {str(e)}")
                     st.session_state.global_logs.append(f"Error: {str(e)}")
@@ -282,70 +316,73 @@ if "selected_scenarios" in st.session_state.comparison_data and st.session_state
                     'avg_route_distance': 'Avg Route Distance (km)',
                     'customers_served': 'Customers Served',
                     'max_route_length': 'Max Route Length',
-                    'avg_utilization': 'Avg Utilization (%)'
+                    'avg_utilization': 'Avg Utilization'
                 }
                 
-                formatted_kpis = {}
-                for s in selected_scenarios:
-                    if s in kpis:
-                        formatted_kpis[s] = {}
-                        for k, v in kpis[s].items():
-                            display_name = kpi_display_names.get(k, k)
-                            if isinstance(v, (int, float)):
-                                if k == 'avg_utilization':
-                                    formatted_kpis[s][display_name] = f"{v:.1f}%"
-                                elif isinstance(v, float):
-                                    formatted_kpis[s][display_name] = f"{v:.2f}"
-                                else:
-                                    formatted_kpis[s][display_name] = v
-                            else:
-                                formatted_kpis[s][display_name] = v
+                # Create numeric DataFrame (all values as float)
+                df_kpis = pd.DataFrame({
+                    s: {kpi_display_names.get(k, k): float(kpis[s].get(k, 0)) for k in kpi_display_names}
+                    for s in selected_scenarios if s in kpis
+                })
+
+                # Create display DataFrame with string formatting
+                df_display = df_kpis.copy()
+                # Convert all numeric columns to string with 2 decimal places
+                for col in df_display.columns:
+                    df_display[col] = df_display[col].apply(lambda x: f"{x:.2f}")
+                # Format utilization as percentage
+                if "Avg Utilization" in df_display.index:
+                    df_display.loc["Avg Utilization"] = df_display.loc["Avg Utilization"].apply(
+                        lambda x: f"{float(x.strip('%')):.1f}%" if isinstance(x, str) else f"{x:.1f}%"
+                    )
+
+                # Display with fallback
+                try:
+                    st.dataframe(df_display)
+                except Exception as e:
+                    st.error(f"⚠️ Failed to display KPI table: {e}")
+                    st.write("Raw numeric DataFrame (fallback):")
+                    st.dataframe(df_kpis)
                 
-                if formatted_kpis:
-                    kpi_df = pd.DataFrame(formatted_kpis)
-                    st.dataframe(kpi_df)
+                # Create radar chart using raw numeric values from df_kpis
+                numeric_kpis = ['total_distance', 'total_routes', 'avg_route_distance', 
+                               'customers_served', 'max_route_length', 'avg_utilization']
+                
+                valid_scenarios = [s for s in selected_scenarios if s in kpis]
+                
+                if len(valid_scenarios) >= 2:
+                    # Create radar chart data using raw numeric values
+                    radar_df = pd.DataFrame({
+                        scenario_name: [float(kpis[scenario_name].get(kpi, 0)) for kpi in numeric_kpis]
+                        for scenario_name in valid_scenarios
+                    }, index=[kpi_display_names.get(kpi, kpi) for kpi in numeric_kpis])
                     
-                    # Create radar chart for KPIs
-                    numeric_kpis = ['total_distance', 'total_routes', 'avg_route_distance', 
-                                   'customers_served', 'max_route_length', 'avg_utilization']
+                    radar_df_norm = radar_df.copy()
+                    for idx in radar_df.index:
+                        max_val = radar_df.loc[idx].max()
+                        if max_val > 0:  # Avoid division by zero
+                            radar_df_norm.loc[idx] = radar_df.loc[idx] / max_val
+                        else:
+                            radar_df_norm.loc[idx] = 0
                     
-                    valid_scenarios = [s for s in selected_scenarios if s in kpis]
+                    # Create radar chart
+                    fig = go.Figure()
+                    for scenario_name in valid_scenarios:
+                        fig.add_trace(go.Scatterpolar(
+                            r=radar_df_norm[scenario_name].values,
+                            theta=radar_df_norm.index,
+                            fill='toself',
+                            name=scenario_name
+                        ))
                     
-                    if len(valid_scenarios) >= 2:
-                        # Create radar chart data
-                        radar_df = pd.DataFrame({
-                            scenario_name: [float(kpis[scenario_name].get(kpi, 0)) for kpi in numeric_kpis]
-                            for scenario_name in valid_scenarios
-                        }, index=[kpi_display_names.get(kpi, kpi) for kpi in numeric_kpis])
-                        
-                        radar_df_norm = radar_df.copy()
-                        for idx in radar_df.index:
-                            max_val = radar_df.loc[idx].max()
-                            if max_val > 0:  # Avoid division by zero
-                                radar_df_norm.loc[idx] = radar_df.loc[idx] / max_val
-                            else:
-                                radar_df_norm.loc[idx] = 0
-                        
-                        # Create radar chart
-                        fig = go.Figure()
-                        for scenario_name in valid_scenarios:
-                            fig.add_trace(go.Scatterpolar(
-                                r=radar_df_norm[scenario_name].values,
-                                theta=radar_df_norm.index,
-                                fill='toself',
-                                name=scenario_name
-                            ))
-                        
-                        fig.update_layout(
-                            polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
-                            showlegend=True,
-                            title="KPI Comparison (Normalized)"
-                        )
-                        st.plotly_chart(fig, use_container_width=True)
-                    else:
-                        st.info("Need at least 2 scenarios with valid KPI data to create a radar chart.")
+                    fig.update_layout(
+                        polar=dict(radialaxis=dict(visible=True, range=[0, 1])),
+                        showlegend=True,
+                        title="KPI Comparison (Normalized)"
+                    )
+                    st.plotly_chart(fig, use_container_width=True)
                 else:
-                    st.info("No KPI data available for the selected scenarios.")
+                    st.info("Need at least 2 scenarios with valid KPI data to create a radar chart.")
         
         # Tab 3: Plot Comparison
         with tabs[2]:
@@ -417,3 +454,42 @@ if st.sidebar.checkbox("Show Debug Info", value=False):
                 st.write(f"  Metrics exist at: {metrics_path}")
             else:
                 st.write(f"  No metrics found at: {metrics_path}")    
+
+def load_compare_metrics(scenario_id):
+    """Load comparison metrics from compare_metrics.json, checking multiple possible locations.
+    Returns the metrics dict if valid, or empty dict if not found/invalid."""
+    scenario_dir = os.path.join("media", "scenarios", str(scenario_id))
+    metrics_paths = [
+        os.path.join(scenario_dir, "compare_metrics.json"),
+        os.path.join(scenario_dir, "outputs", "compare_metrics.json"),
+    ]
+    
+    for path in metrics_paths:
+        if os.path.exists(path):
+            try:
+                with open(path, "r") as f:
+                    metrics = json.load(f)
+                if (
+                    isinstance(metrics, dict)
+                    and metrics.get("status", "") == "solved"
+                    and "kpis" in metrics 
+                    and isinstance(metrics["kpis"], dict)
+                    and metrics["kpis"]  # Ensure kpis dict is not empty
+                ):
+                    st.session_state.global_logs.append(
+                        f"Successfully loaded compare_metrics.json from {path} for scenario {scenario_id}"
+                    )
+                    return metrics
+                else:
+                    st.session_state.global_logs.append(
+                        f"compare_metrics.json at {path} missing 'kpis' or not solved."
+                    )
+            except Exception as e:
+                st.session_state.global_logs.append(
+                    f"Failed to load compare_metrics.json from {path}: {str(e)}"
+                )
+    
+    st.session_state.global_logs.append(
+        f"No valid compare_metrics.json found for scenario {scenario_id}"
+    )
+    return {}  # fallback if not found or invalid    

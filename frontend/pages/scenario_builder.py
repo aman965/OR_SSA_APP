@@ -106,7 +106,39 @@ def run_model_for_scenario(scenario_id):
                 progress_bar.empty()
                 st.success(f"✅ Model for scenario '{scenario.name}' solved successfully!")
                 st.session_state.global_logs.append(f"Scenario {scenario.id} solved successfully.")
-                
+
+                # --- KPI Calculation and Save compare_metrics.json ---
+                try:
+                    routes = solution.get('routes', [])
+                    total_routes = len(routes)
+                    total_distance = float(solution.get('total_distance', 0))
+                    avg_route_distance = total_distance / total_routes if total_routes else 0
+                    customers_served = sum(len(r) - 2 for r in routes if isinstance(r, list) and len(r) > 2)
+                    max_route_length = max((len(r) - 2 for r in routes if isinstance(r, list)), default=0)
+                    avg_utilization = customers_served / total_routes if total_routes else 0
+                    kpis = {
+                        "total_distance": total_distance,
+                        "total_routes": total_routes,
+                        "avg_route_distance": avg_route_distance,
+                        "customers_served": customers_served,
+                        "max_route_length": max_route_length,
+                        "avg_utilization": round(avg_utilization, 2)
+                    }
+                    compare_metrics = {
+                        "scenario_id": scenario.id,
+                        "scenario_name": scenario.name,
+                        "snapshot_name": scenario.snapshot.name,
+                        "kpis": kpis,
+                        "status": solution.get("status", "solved")
+                    }
+                    compare_metrics_path = os.path.join(scenario_dir, "compare_metrics.json")
+                    with open(compare_metrics_path, 'w') as f:
+                        json.dump(compare_metrics, f, indent=2)
+                    st.session_state.global_logs.append(f"compare_metrics.json written for scenario {scenario.id}")
+                except Exception as e:
+                    st.session_state.global_logs.append(f"Error writing compare_metrics.json for scenario {scenario.id}: {str(e)}")
+                # --- End KPI Calculation ---
+
                 # Prepare for redirect
                 redirect_to_results = True
                 snapshot_name_for_redirect = scenario.snapshot.name
