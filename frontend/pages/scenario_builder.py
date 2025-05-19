@@ -30,4 +30,4 @@ if st.button("💾  Save", type="primary", disabled=not name.strip()):
     st.toast("Scenario created ✅")
     st.session_state.pop("prefill_snapshot_id", None)
     st.session_state.pop("prefill_snapshot_name", None)
-    safe_switch_page("1_📸_snapshots")
+    safe_switch_page("snapshots")

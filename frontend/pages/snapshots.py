@@ -38,4 +38,4 @@ for snap in snapshots:
                          use_container_width=True):
                 st.session_state["prefill_snapshot_id"] = snap.id
                 st.session_state["prefill_snapshot_name"] = snap.name
-                safe_switch_page("2_📝_scenario_builder")
+                safe_switch_page("scenario_builder")
