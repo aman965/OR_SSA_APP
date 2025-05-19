@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
-from backend.db_models import Base, Scenario, Action, ActionOwner
+from backend.db_models import Base, Snapshot, Scenario, Action, ActionOwner
 import os
 
 # Get the absolute path to the database file
@@ -38,6 +38,24 @@ def list_scenarios_for_snapshot(db: Session, snapshot_id: int):
           .order_by(Scenario.created_at.asc())
           .all()
     )
+
+
+def create_snapshot(db, *, name: str,
+                    dataset_id: int,
+                    file_path: str) -> Snapshot:
+    """
+    One-liner helper; keeps Snapshot creation in one place.
+    """
+    snap = Snapshot(
+        name=name,
+        dataset_id=dataset_id,
+        file_path=file_path,
+    )
+    db.add(snap)
+    db.commit()
+    db.refresh(snap)
+    return snap
+
 
 def create_scenario(db: Session, *, name: str, description: str | None,
                     snapshot_id: int) -> Scenario:
