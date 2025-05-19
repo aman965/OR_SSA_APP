@@ -1,6 +1,11 @@
 import streamlit as st
 import os
 
+try:
+    from streamlit_extras.switch_page_button import switch_page
+except ModuleNotFoundError:
+    switch_page = None
+
 def safe_switch_page(page_name):
     """
     Safely switch to another page in the Streamlit app
