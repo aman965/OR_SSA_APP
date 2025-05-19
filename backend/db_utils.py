@@ -1,51 +1,49 @@
-from sqlalchemy import create_engine
-from sqlalchemy.orm import Session, sessionmaker
-from backend.db_models import Base, Snapshot, Scenario, Action, ActionOwner
-import os
+"""
+Helper functions that operate *on* a SQLAlchemy Session.
+They delegate all engine / session creation to backend.db
+so the whole app shares a single database file.
+"""
 
-# Get the absolute path to the database file
-db_path = os.path.join(os.path.dirname(__file__), "app.db")
-DATABASE_URL = f"sqlite:///{db_path}"
+from sqlalchemy.orm import Session
+from backend.db import SessionLocal            # <- single source of truth
+from backend.db_models import (
+    Snapshot,
+    Scenario,
+    Action,
+    ActionOwner,
+)
 
-# SQLAlchemy setup
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-def init_db():
-    """Initialize the database by creating all tables."""
-    Base.metadata.create_all(bind=engine)
-
-
+# ────────────────────────────────────────────────────────────────────────
+# session helper (kept for backward-compat with pages that import it)
+# -----------------------------------------------------------------------
 def get_session() -> Session:
-    """Get a new database session."""
-    db = SessionLocal()
-    try:
-        return db
-    except Exception as e:
-        db.close()
-        raise e
+    """
+    Return a brand-new Session.
+    (Uses the SessionLocal defined in backend.db, so every part of the
+    app talks to the same database.)
+    """
+    return SessionLocal()
 
 
-# ── Scenario helpers ──────────────────────────────────────────────────────
+# ────────────────────────────────────────────────────────────────────────
+# CRUD utilities
+# -----------------------------------------------------------------------
 def list_snapshots(db: Session):
-    from backend.db_models import Snapshot
     return db.query(Snapshot).order_by(Snapshot.created_at.desc()).all()
+
 
 def list_scenarios_for_snapshot(db: Session, snapshot_id: int):
     return (
         db.query(Scenario)
-          .filter(Scenario.snapshot_id == snapshot_id)
-          .order_by(Scenario.created_at.asc())
-          .all()
+        .filter(Scenario.snapshot_id == snapshot_id)
+        .order_by(Scenario.created_at.asc())
+        .all()
     )
 
 
-def create_snapshot(db, *, name: str,
-                    dataset_id: int,
-                    file_path: str) -> Snapshot:
-    """
-    One-liner helper; keeps Snapshot creation in one place.
-    """
+def create_snapshot(
+    db: Session, *, name: str, dataset_id: int, file_path: str
+) -> Snapshot:
     snap = Snapshot(
         name=name,
         dataset_id=dataset_id,
@@ -57,23 +55,30 @@ def create_snapshot(db, *, name: str,
     return snap
 
 
-def create_scenario(db: Session, *, name: str, description: str | None,
-                    snapshot_id: int) -> Scenario:
-    scn = Scenario(name=name,
-                   description=description,
-                   snapshot_id=snapshot_id)
+def create_scenario(
+    db: Session, *, name: str, description: str | None, snapshot_id: int
+) -> Scenario:
+    scn = Scenario(name=name, description=description, snapshot_id=snapshot_id)
     db.add(scn)
     db.commit()
     db.refresh(scn)
     return scn
 
-# ── Action helpers (very thin layer for now) ──────────────────────────────
-def create_action(db: Session, *, name: str,
-                  owner_type: ActionOwner, owner_id: int, payload: str | None):
-    action = Action(name=name,
-                    owner_type=owner_type,
-                    owner_id=owner_id,
-                    payload=payload)
-    db.add(action)
+
+def create_action(
+    db: Session,
+    *,
+    name: str,
+    owner_type: ActionOwner,
+    owner_id: int,
+    payload: str | None,
+) -> Action:
+    act = Action(
+        name=name,
+        owner_type=owner_type,
+        owner_id=owner_id,
+        payload=payload,
+    )
+    db.add(act)
     db.commit()
-    return action
+    return act
