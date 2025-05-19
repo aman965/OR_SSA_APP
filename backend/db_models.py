@@ -6,6 +6,7 @@ from sqlalchemy import (
     ForeignKey,
     Text,
     Enum,
+    UniqueConstraint
 )
 from sqlalchemy.orm import declarative_base, relationship
 import datetime as _dt
@@ -50,7 +51,7 @@ class Scenario(Base):
     __tablename__ = "scenarios"
 
     id = Column(Integer, primary_key=True)
-    name = Column(String(120), nullable=False, unique=True)
+    name = Column(String(120), nullable=False)
     description = Column(Text, nullable=True)
     snapshot_id = Column(
         Integer,
@@ -61,6 +62,11 @@ class Scenario(Base):
 
     # ORM link to parent
     snapshot = relationship("Snapshot", back_populates="scenarios")
+
+    __table_args__ = (
+        UniqueConstraint("snapshot_id", "name",
+                         name="uq_scenario_name_per_snapshot"),
+    )
 
 
 class ActionOwner(enum.Enum):
