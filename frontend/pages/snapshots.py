@@ -108,7 +108,7 @@ for snap in snapshots:
                             st.session_state.global_logs.append(f"View Results for {snap.name} - {scenario.name}")
                             st.write("Selected Snapshot:", snap.name)
                             st.write("Selected Scenario:", scenario.name)
-                            st.switch_page("view_results")
+                            st.switch_page("pages/view_results.py")
                     elif scenario.status == "failed":
                         st.button("Failed", disabled=True, help=scenario.reason or "No reason provided", key=f"fail_{snap.name}_{scenario.name}")
                         st.write("Selected Snapshot:", snap.name)
