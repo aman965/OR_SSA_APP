@@ -1,122 +1,123 @@
-import sys
-import os
-from pathlib import Path
 import streamlit as st
-import pandas as pd
-from datetime import datetime
-import django
+from frontend.components.api_client import get_snapshots, create_snapshot, get_scenarios, get_uploads
+from collections import defaultdict
 
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-BACKEND_PATH = os.path.abspath(os.path.join(BASE_DIR, "../backend"))
-sys.path.append(BACKEND_PATH)
+st.set_page_config(page_title="Snapshots", page_icon="📸")
+st.header("📸 Snapshots")
 
-os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'orsaas_backend.settings')
-django.setup()
-from core.models import Upload, Snapshot
+# --- Add Scenario Redirect (instant) ---
+if 'add_scenario_redirect' in st.session_state:
+    snap_id = st.session_state.pop('add_scenario_redirect')
+    st.session_state['selected_snapshot_for_new_scenario'] = snap_id
+    st.switch_page("pages/scenario_builder.py")
+    st.stop()
 
-from django.conf import settings
+# --- Create New Snapshot Section ---
+if 'show_create_snapshot_form' not in st.session_state:
+    st.session_state['show_create_snapshot_form'] = False
 
-st.set_page_config(page_title="2. Snapshots", page_icon="📸")
+if not st.session_state['show_create_snapshot_form']:
+    if st.button("Create New Snapshot", key="open_create_snapshot_form"):
+        st.session_state['show_create_snapshot_form'] = True
+        st.rerun()
+else:
+    st.subheader("Create New Snapshot")
+    # Fetch datasets (uploads) for dropdown
+    uploads = get_uploads()
+    dataset_options = [(u['name'], u['id']) for u in uploads] if uploads else []
+    with st.form("create_snapshot_form"):
+        name = st.text_input("Snapshot Name")
+        if dataset_options:
+            dataset_idx = st.selectbox(
+                "Dataset",
+                options=range(len(dataset_options)),
+                format_func=lambda i: dataset_options[i][0],
+                help="Select a dataset to associate with this snapshot."
+            )
+            dataset_id = dataset_options[dataset_idx][1]
+        else:
+            st.warning("No datasets found. Please upload a dataset first.")
+            dataset_id = None
+        description = st.text_area("Description")
+        col1, col2 = st.columns([1,1])
+        submitted = col1.form_submit_button("Create Snapshot")
+        cancel = col2.form_submit_button("Cancel")
+        if submitted:
+            if not name or not dataset_id:
+                st.error("Please provide both name and dataset.")
+            else:
+                result = create_snapshot(name, dataset_id, description)
+                if isinstance(result, dict) and result.get("id"):
+                    st.success(f"Snapshot '{name}' created successfully!")
+                    st.session_state['show_create_snapshot_form'] = False
+                    st.rerun()
+                else:
+                    st.error(f"Failed to create snapshot: {result}")
+        if cancel:
+            st.session_state['show_create_snapshot_form'] = False
+            st.rerun()
 
-# Initialize session state for logs if not exists
-if "global_logs" not in st.session_state:
-    st.session_state.global_logs = ["Snapshots page initialized."]
+# --- Caching API calls for 30 seconds ---
+@st.cache_data(ttl=30)
+def cached_get_snapshots():
+    return get_snapshots()
 
-st.title("Snapshots")
+@st.cache_data(ttl=30)
+def cached_get_scenarios():
+    return get_scenarios()
 
-# Section 1: Create Snapshot
-st.header("Create Snapshot")
+# --- Fetch all snapshots and scenarios (efficient) ---
+st.subheader("Existing Snapshots")
+with st.spinner("Loading snapshots and scenarios..."):
+    snapshots = cached_get_snapshots()
+    all_scenarios = cached_get_scenarios()
+    scenarios_by_snapshot = defaultdict(list)
+    for scenario in all_scenarios:
+        scenarios_by_snapshot[scenario.get('snapshot')].append(scenario)
 
-# Get all uploads for selection
-datasets = Upload.objects.all().order_by("-uploaded_at")
-dataset_names = [u.name for u in datasets]
-selected_upload_name = st.selectbox(
-    "Select Dataset",
-    dataset_names,
-    help="Choose a dataset to create a snapshot from"
-) if dataset_names else None
+if snapshots:
+    for snap in snapshots:
+        with st.expander(f"📸 {snap['name']} (ID: {snap['id']})", expanded=False):
+            st.write(f"**Dataset:** {snap.get('dataset', 'N/A')}")
+            # Description preview and toggle
+            desc = snap.get('description')
+            if desc:
+                preview_len = 100
+                show_full_key = f"show_full_desc_{snap['id']}"
+                if show_full_key not in st.session_state:
+                    st.session_state[show_full_key] = False
+                is_long = len(desc) > preview_len or '\n' in desc
+                if not st.session_state[show_full_key] and is_long:
+                    # Show preview
+                    preview = desc.split('\n', 1)[0][:preview_len]
+                    st.markdown(f"**Description:** {preview}... ")
+                    if st.button("Show more", key=f"showmore_{snap['id']}"):
+                        st.session_state[show_full_key] = True
+                        st.rerun()
+                else:
+                    st.markdown(f"**Description:** {desc}")
+                    if is_long and st.button("Show less", key=f"showless_{snap['id']}"):
+                        st.session_state[show_full_key] = False
+                        st.rerun()
+            st.write(f"**Owner:** {snap.get('owner', 'N/A')}")
+            st.write(f"**Created At:** {snap.get('created_at', '')}")
+            st.write(f"**Updated At:** {snap.get('updated_at', '')}")
 
-snapshot_name = st.text_input(
-    "Snapshot Name",
-    help="Enter a name for this snapshot"
-)
+            # --- List Scenarios for this Snapshot ---
+            st.markdown("**Scenarios:**")
+            scenarios = scenarios_by_snapshot.get(snap['id'], [])
+            if scenarios:
+                for scenario in scenarios:
+                    st.write(f"- {scenario['name']} (Status: {scenario.get('status', 'N/A')})")
+            else:
+                st.info("No scenarios found for this snapshot.")
 
-description = st.text_area(
-    "Description",
-    help="Enter a description for this snapshot"
-)
-
-# HOOK: Save snapshot to DB and link to selected Upload
-if st.button("Create Snapshot"):
-    if not snapshot_name:
-        st.error("Please enter a snapshot name")
-    elif not selected_upload_name:
-        st.error("Please select a dataset")
-    elif Snapshot.objects.filter(name=snapshot_name).exists():
-        st.warning("Snapshot with this name already exists.")
-    else:
-        upload_obj = Upload.objects.get(name=selected_upload_name)
-        # Create snapshot with description
-        snapshot = Snapshot.objects.create(
-            name=snapshot_name,
-            linked_upload=upload_obj,
-            description=description
-        )
-        
-        try:
-            import pandas as pd
-            from components.file_utils import save_snapshot_file
-            
-            if upload_obj.file.name.endswith('.csv'):
-                df = pd.read_csv(upload_obj.file.path)
-            else:  # xlsx
-                df = pd.read_excel(upload_obj.file.path)
-                
-            snapshot_path = save_snapshot_file(snapshot.id, df)
-            st.session_state.global_logs.append(f"Snapshot file created at: {snapshot_path}")
-        except Exception as e:
-            st.warning(f"Could not create physical snapshot file: {str(e)}")
-            st.session_state.global_logs.append(f"Error creating snapshot file: {str(e)}")
-            
-        st.success(f"Snapshot '{snapshot_name}' created successfully.")
-        st.session_state.global_logs.append(f"Snapshot '{snapshot_name}' created.")
-
-# Section 2: Snapshots & Scenarios
-st.header("Snapshots & Scenarios")
-snapshots = Snapshot.objects.select_related("linked_upload").order_by("-created_at")
-for snap in snapshots:
-    with st.expander(f"📦 {snap.name}"):
-        st.markdown(f"**Linked Dataset:** {snap.linked_upload.name if snap.linked_upload else 'N/A'}")
-        st.markdown(f"**Created At:** {snap.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
-        st.markdown(f"**Description:** {snap.description or 'No description provided'}")
-        
-        # List real scenarios for this snapshot
-        scenarios = snap.scenario_set.all().order_by("-created_at")
-        if scenarios:
-            st.markdown("### Scenarios")
-            for scenario in scenarios:
-                col1, col2, col3 = st.columns([3, 1, 2])
-                with col1:
-                    st.markdown(f"**{scenario.name}**")
-                with col2:
-                    st.markdown(f"Status: `{scenario.status}`")
-                with col3:
-                    if scenario.status == "solved":
-                        if st.button(f"View Results ({snap.name} - {scenario.name})", key=f"view_{snap.name}_{scenario.name}"):
-                            st.session_state["selected_snapshot_for_results"] = snap.name
-                            st.session_state["selected_scenario_for_results"] = scenario.name
-                            st.session_state.global_logs.append(f"View Results for {snap.name} - {scenario.name}")
-                            st.write("Selected Snapshot:", snap.name)
-                            st.write("Selected Scenario:", scenario.name)
-                            st.switch_page("pages/view_results.py")
-                    elif scenario.status == "failed":
-                        st.button("Failed", disabled=True, help=scenario.reason or "No reason provided", key=f"fail_{snap.name}_{scenario.name}")
-                        st.write("Selected Snapshot:", snap.name)
-                        st.write("Selected Scenario:", scenario.name)
-                    else:
-                        st.button("Not Solved", disabled=True, help="Scenario not yet solved", key=f"not_solved_{snap.name}_{scenario.name}")
-                        st.write("Selected Snapshot:", snap.name)
-                        st.write("Selected Scenario:", scenario.name)
+            # --- Add New Scenario Action (instant redirect) ---
+            if st.button("Add Scenario", key=f"open_scenario_builder_{snap['id']}"):
+                st.session_state['add_scenario_redirect'] = snap['id']
+                st.rerun()
+else:
+    st.info("No snapshots found.")
 
 # Debug Panel Toggle
 if st.sidebar.checkbox("Show Debug Info", value=False):

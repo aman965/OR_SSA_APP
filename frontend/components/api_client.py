@@ -44,12 +44,14 @@ def create_upload(name, file):
         st.error(f"Failed to create upload: {response.status_code}")
         return None
 
-def create_snapshot(name, upload_id):
+def create_snapshot(name, upload_id, description=None):
     """Create a new snapshot"""
     data = {
         'name': name,
-        'linked_upload': upload_id
+        'dataset': upload_id
     }
+    if description is not None:
+        data['description'] = description
     response = requests.post(f"{API_BASE_URL}/snapshots/", json=data)
     if response.status_code == 201:
         return response.json()
