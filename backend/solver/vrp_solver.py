@@ -31,7 +31,9 @@ def build_and_solve_vrp(scenario, df, output_dir):
     # If vehicle count param exists, use it, else default to 3
     vehicle_count = int(scenario['params'].get('param2', 3)) or 3
     vehicle_capacity = float(scenario['params'].get('param1', 100)) or 100
-    log(f"Nodes: {n}, Vehicles: {vehicle_count}, Capacity: {vehicle_capacity}")
+    # If vehicle_limit param exists, use it, else default to vehicle_count
+    vehicle_limit = int(scenario['params'].get('vehicle_limit', vehicle_count))
+    log(f"Nodes: {n}, Vehicles: {vehicle_count}, Capacity: {vehicle_capacity}, Vehicle limit: {vehicle_limit}")
 
     # Distance matrix: assume columns are node names or indices
     if 'distance' in df.columns:
@@ -53,6 +55,8 @@ def build_and_solve_vrp(scenario, df, output_dir):
     prob = LpProblem("VRP", LpMinimize)
     x = LpVariable.dicts('x', ((i, j, v) for i in nodes for j in nodes for v in range(vehicle_count)), cat=LpBinary)
     u = LpVariable.dicts('u', ((i, v) for i in nodes for v in range(vehicle_count)), lowBound=0, upBound=vehicle_capacity, cat='Continuous')
+    # New: Binary variable indicating if vehicle k is used
+    used_k = LpVariable.dicts('used', list(range(vehicle_count)), cat=LpBinary)
 
     # Objective: Minimize total distance
     prob += lpSum(dist_matrix[i][j] * x[i, j, v] for i in nodes for j in nodes for v in range(vehicle_count) if i != j)
@@ -64,12 +68,15 @@ def build_and_solve_vrp(scenario, df, output_dir):
             continue
         prob += lpSum(x[i, j, v] for i in nodes for v in range(vehicle_count) if i != j) == 1, f"Visit_{j}"
 
-    # 2. Flow conservation for vehicles
+    # 2. Vehicle limit: sum_k used_k <= vehicle_limit
+    prob += lpSum(used_k[k] for k in range(vehicle_count)) <= vehicle_limit, "VehicleLimit"
+
+    # 3. Flow conservation and depot constraints for vehicles
     for v in range(vehicle_count):
-        # Each vehicle leaves depot once
-        prob += lpSum(x[depot, j, v] for j in nodes if j != depot) == 1, f"DepartDepot_{v}"
-        # Each vehicle returns to depot once
-        prob += lpSum(x[i, depot, v] for i in nodes if i != depot) == 1, f"ReturnDepot_{v}"
+        # Each vehicle leaves depot only if used
+        prob += lpSum(x[depot, j, v] for j in nodes if j != depot) == used_k[v], f"DepartDepot_{v}"
+        # Each vehicle returns to depot only if used
+        prob += lpSum(x[i, depot, v] for i in nodes if i != depot) == used_k[v], f"ReturnDepot_{v}"
         for h in nodes:
             if h == depot:
                 continue
@@ -77,7 +84,7 @@ def build_and_solve_vrp(scenario, df, output_dir):
                 lpSum(x[i, h, v] for i in nodes if i != h) == lpSum(x[h, j, v] for j in nodes if j != h)
             ), f"FlowCons_{h}_{v}"
 
-    # 3. Subtour elimination (MTZ)
+    # 4. Subtour elimination (MTZ)
     for v in range(vehicle_count):
         for i in nodes:
             if i == depot:
@@ -89,7 +96,7 @@ def build_and_solve_vrp(scenario, df, output_dir):
                 if i != j and i != depot and j != depot:
                     prob += u[i, v] - u[j, v] + vehicle_capacity * x[i, j, v] <= vehicle_capacity - demand[j], f"MTZ_{i}_{j}_{v}"
 
-    # 4. Vehicle capacity
+    # 5. Vehicle capacity
     for v in range(vehicle_count):
         prob += lpSum(demand[j] * x[i, j, v] for i in nodes for j in nodes if i != j) <= vehicle_capacity, f"Cap_{v}"
 
@@ -108,6 +115,9 @@ def build_and_solve_vrp(scenario, df, output_dir):
         total_distance = value(prob.objective)
         routes = []
         for v in range(vehicle_count):
+            # Only output route if used_k[v] == 1
+            if value(used_k[v]) < 0.5:
+                continue
             route = [int(depot)]  # ensure native int
             current = depot
             visited = set([depot])
@@ -131,7 +141,7 @@ def build_and_solve_vrp(scenario, df, output_dir):
         solution = {
             "status": "optimal",
             "total_distance": total_distance,
-            "vehicle_count": vehicle_count,
+            "vehicle_count": int(sum(value(used_k[v]) > 0.5 for v in range(vehicle_count))),
             "routes": routes
         }
         with open(os.path.join(output_dir, "solution_summary.json"), 'w') as f:
