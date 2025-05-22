@@ -205,11 +205,14 @@ try:
         st.session_state.gpt_analysis_loading = False
     
     # Submit button for GPT analysis
-    if st.button("Analyze", key="analyze_button", disabled=not user_question or st.session_state.gpt_analysis_loading):
-        st.session_state.global_logs.append("Analyze button clicked")
-        st.write("Starting analysis...")
-        run_gpt_analysis()
-        st.experimental_rerun()  # Force Streamlit to rerun after analysis completes
+    analyze_col1, analyze_col2 = st.columns([3, 1])
+    with analyze_col2:
+        if st.button("Analyze", key="analyze_button", disabled=not user_question or st.session_state.gpt_analysis_loading, use_container_width=True):
+            st.session_state.global_logs.append("Analyze button clicked")
+            with analyze_col1:
+                st.write("Starting analysis...")
+            run_gpt_analysis()
+            st.experimental_rerun()  # Force Streamlit to rerun after analysis completes
     
     if st.session_state.gpt_analysis_loading:
         with st.spinner("Analyzing solution..."):
@@ -281,4 +284,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state)                                       
+        st.json(st.session_state)                                             
