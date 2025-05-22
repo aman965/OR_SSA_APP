@@ -169,25 +169,36 @@ def parse_gpt_response(response_text):
             
             if isinstance(parsed, dict) and "chart_type" in parsed:
                 print(f"Detected chart format of type: {parsed.get('chart_type')}")
+                
                 chart_data = {
-                    "chart_type": parsed.get("chart_type", "bar"),
-                    "title": parsed.get("title", "Chart"),
+                    "chart_type": str(parsed.get("chart_type", "bar")),
+                    "title": str(parsed.get("title", "Chart")),
                     "labels": [],
                     "values": []
                 }
                 
                 if "labels" in parsed and isinstance(parsed["labels"], list):
-                    chart_data["labels"] = parsed["labels"]
+                    chart_data["labels"] = [str(label) for label in parsed["labels"]]
+                else:
+                    chart_data["labels"] = ["No Data"]
+                    print("Warning: Invalid or missing labels in chart data")
                 
                 if "values" in parsed and isinstance(parsed["values"], list):
-                    chart_data["values"] = parsed["values"]
+                    try:
+                        chart_data["values"] = [float(val) for val in parsed["values"]]
+                    except (ValueError, TypeError):
+                        print("Warning: Non-numeric values in chart data, using defaults")
+                        chart_data["values"] = [0] * len(chart_data["labels"])
+                else:
+                    chart_data["values"] = [0] * len(chart_data["labels"])
+                    print("Warning: Invalid or missing values in chart data")
                 
-                if not chart_data["labels"] or not chart_data["values"]:
-                    print("Warning: Chart data missing labels or values")
-                    if not chart_data["labels"]:
-                        chart_data["labels"] = ["No Data"]
-                    if not chart_data["values"]:
-                        chart_data["values"] = [0]
+                if len(chart_data["labels"]) != len(chart_data["values"]):
+                    print(f"Warning: Mismatched lengths - labels: {len(chart_data['labels'])}, values: {len(chart_data['values'])}")
+                    if len(chart_data["labels"]) > len(chart_data["values"]):
+                        chart_data["values"].extend([0] * (len(chart_data["labels"]) - len(chart_data["values"])))
+                    else:
+                        chart_data["labels"].extend([f"Item {i+1}" for i in range(len(chart_data["labels"]), len(chart_data["values"]))])
                 
                 print(f"Returning chart data: {chart_data}")
                 return {
@@ -202,6 +213,11 @@ def parse_gpt_response(response_text):
             }
         except json.JSONDecodeError as json_err:
             print(f"JSON decode error: {str(json_err)}")
+            if cleaned_text.replace('.', '', 1).isdigit():
+                return {
+                    "type": "value",
+                    "data": cleaned_text
+                }
             return {
                 "type": "value",
                 "data": cleaned_text
