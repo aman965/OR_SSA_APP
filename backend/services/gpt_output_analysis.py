@@ -143,46 +143,65 @@ def parse_gpt_response(response_text):
     
     try:
         cleaned_text = response_text.strip()
+        print(f"Original response text: {cleaned_text[:100]}...")
         
         if "```json" in cleaned_text:
             parts = cleaned_text.split("```json")
             if len(parts) > 1:
                 cleaned_text = parts[1].split("```")[0].strip()
+                print(f"Extracted JSON from markdown: {cleaned_text[:100]}...")
         elif "```" in cleaned_text:
             parts = cleaned_text.split("```")
             if len(parts) > 1:
                 cleaned_text = parts[1].strip()
+                print(f"Extracted code from markdown: {cleaned_text[:100]}...")
         
         try:
             parsed = json.loads(cleaned_text)
+            print(f"Successfully parsed JSON with keys: {list(parsed.keys()) if isinstance(parsed, dict) else 'not a dict'}")
             
             if isinstance(parsed, dict) and "table" in parsed:
+                print("Detected table format")
                 return {
                     "type": "table",
                     "data": parsed["table"]
                 }
             
             if isinstance(parsed, dict) and "chart_type" in parsed:
-                chart_data = parsed.copy()
+                print(f"Detected chart format of type: {parsed.get('chart_type')}")
+                chart_data = {
+                    "chart_type": parsed.get("chart_type", "bar"),
+                    "title": parsed.get("title", "Chart"),
+                    "labels": [],
+                    "values": []
+                }
                 
-                if "labels" not in chart_data or not isinstance(chart_data["labels"], list):
-                    chart_data["labels"] = []
-                if "values" not in chart_data or not isinstance(chart_data["values"], list):
-                    chart_data["values"] = []
+                if "labels" in parsed and isinstance(parsed["labels"], list):
+                    chart_data["labels"] = parsed["labels"]
                 
-                if "title" not in chart_data:
-                    chart_data["title"] = "Chart"
-                    
+                if "values" in parsed and isinstance(parsed["values"], list):
+                    chart_data["values"] = parsed["values"]
+                
+                if not chart_data["labels"] or not chart_data["values"]:
+                    print("Warning: Chart data missing labels or values")
+                    if not chart_data["labels"]:
+                        chart_data["labels"] = ["No Data"]
+                    if not chart_data["values"]:
+                        chart_data["values"] = [0]
+                
+                print(f"Returning chart data: {chart_data}")
                 return {
                     "type": "chart",
                     "data": chart_data
                 }
             
+            print("Defaulting to value format")
             return {
                 "type": "value",
                 "data": str(parsed)
             }
-        except json.JSONDecodeError:
+        except json.JSONDecodeError as json_err:
+            print(f"JSON decode error: {str(json_err)}")
             return {
                 "type": "value",
                 "data": cleaned_text
@@ -190,6 +209,7 @@ def parse_gpt_response(response_text):
     except Exception as e:
         print(f"Error parsing GPT response: {str(e)}")
         print(f"Original response text: {response_text}")
+        print(traceback.format_exc())
         
         return {
             "type": "error",
