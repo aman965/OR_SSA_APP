@@ -163,9 +163,19 @@ def parse_gpt_response(response_text):
                 }
             
             if isinstance(parsed, dict) and "chart_type" in parsed:
+                chart_data = parsed.copy()
+                
+                if "labels" not in chart_data or not isinstance(chart_data["labels"], list):
+                    chart_data["labels"] = []
+                if "values" not in chart_data or not isinstance(chart_data["values"], list):
+                    chart_data["values"] = []
+                
+                if "title" not in chart_data:
+                    chart_data["title"] = "Chart"
+                    
                 return {
                     "type": "chart",
-                    "data": parsed
+                    "data": chart_data
                 }
             
             return {
