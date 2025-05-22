@@ -48,7 +48,13 @@ class Upload(models.Model):
 
 class Snapshot(models.Model):
     name = models.CharField(max_length=255, unique=True)
-    dataset: Dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE, related_name="snapshots")  # type: ignore[valid-type]
+    dataset: Dataset = models.ForeignKey(
+        Dataset,
+        on_delete=models.CASCADE,
+        related_name="snapshots",
+        null=True,
+        blank=True,
+    )  # type: ignore[valid-type]
     description = models.TextField(blank=True, null=True)
 
     owner: "settings.AUTH_USER_MODEL" = models.ForeignKey(
