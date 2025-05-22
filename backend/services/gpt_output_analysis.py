@@ -136,48 +136,70 @@ def analyze_output(user_question, scenario_id):
     Returns:
         dict: Analysis result with type and data
     """
+    print(f"Starting GPT analysis for scenario {scenario_id} with question: {user_question}")
     try:
         from core.models import Scenario
         
+        print(f"Fetching scenario {scenario_id} from database")
         scenario = Scenario.objects.select_related('snapshot').get(id=scenario_id)
+        print(f"Found scenario: {scenario.name} with snapshot: {scenario.snapshot.name}")
         
         scenario_config_path = os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "scenario.json")
+        print(f"Looking for scenario config at: {scenario_config_path}")
         if os.path.exists(scenario_config_path):
+            print(f"Found scenario config file")
             with open(scenario_config_path, 'r') as f:
                 scenario_config = json.load(f)
         else:
+            print(f"Scenario config file not found at {scenario_config_path}")
             return {
                 "type": "error",
-                "data": "Could not load scenario configuration"
+                "data": f"Could not load scenario configuration from {scenario_config_path}"
             }
         
         solution_path = os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "outputs", "solution_summary.json")
+        print(f"Looking for solution at primary path: {solution_path}")
         if not os.path.exists(solution_path):
             alt_solution_path = os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "solution_summary.json")
+            print(f"Primary path not found, trying alternate path: {alt_solution_path}")
             if os.path.exists(alt_solution_path):
                 solution_path = alt_solution_path
+                print(f"Found solution at alternate path")
             else:
+                print(f"Solution file not found at either path")
                 return {
                     "type": "error",
-                    "data": "Solution file not found for this scenario"
+                    "data": f"Solution file not found at {solution_path} or {alt_solution_path}"
                 }
         
+        print(f"Loading solution from {solution_path}")
         with open(solution_path, 'r') as f:
             solution_summary = json.load(f)
         
         # Load snapshot CSV file
         snapshot_id = scenario.snapshot.id
         snapshot_path = os.path.join(MEDIA_ROOT, "snapshots", f"snapshot__{snapshot_id}", "snapshot.csv")
+        print(f"Looking for snapshot CSV at: {snapshot_path}")
         
         input_sample = get_input_sample(snapshot_path)
+        print(f"Got input sample with {len(input_sample)} rows")
         
+        print("Building GPT prompt")
         prompt = build_gpt_prompt(user_question, scenario_config, solution_summary, input_sample)
-        gpt_response = call_chatgpt(prompt)
         
+        print("Calling OpenAI API")
+        gpt_response = call_chatgpt(prompt)
+        print(f"Got GPT response of length: {len(gpt_response)}")
+        
+        print("Parsing GPT response")
         parsed_response = parse_gpt_response(gpt_response)
+        print(f"Parsed response type: {parsed_response.get('type', 'unknown')}")
         
         return parsed_response
     except Exception as e:
+        import traceback
+        print(f"Error in analyze_output: {str(e)}")
+        print(traceback.format_exc())
         return {
             "type": "error",
             "data": f"Error analyzing output: {str(e)}"

@@ -177,11 +177,18 @@ try:
     # Function to run GPT analysis
     def run_gpt_analysis():
         st.session_state.gpt_analysis_loading = True
-        st.session_state.gpt_analysis_result = analyze_output(user_question, scenario.id)
+        st.session_state.global_logs.append(f"Starting GPT analysis for scenario {scenario.id} with question: {user_question}")
+        try:
+            st.session_state.gpt_analysis_result = analyze_output(user_question, scenario.id)
+            st.session_state.global_logs.append(f"GPT analysis completed with result type: {st.session_state.gpt_analysis_result.get('type', 'unknown')}")
+        except Exception as e:
+            st.session_state.global_logs.append(f"Error in GPT analysis: {str(e)}")
+            st.session_state.gpt_analysis_result = {"type": "error", "data": f"Error: {str(e)}"}
         st.session_state.gpt_analysis_loading = False
     
     # Submit button for GPT analysis
     if st.button("Analyze", key="analyze_button", disabled=not user_question or st.session_state.gpt_analysis_loading):
+        st.session_state.global_logs.append("Analyze button clicked")
         run_gpt_analysis()
     
     if st.session_state.gpt_analysis_loading:
@@ -254,4 +261,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state)                     
+        st.json(st.session_state)                           
