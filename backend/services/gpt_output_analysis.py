@@ -169,12 +169,10 @@ def parse_gpt_response(response_text):
             if isinstance(parsed, dict) and "chart_type" in parsed:
                 print(f"Detected chart format of type: {parsed.get('chart_type')}")
                 
-                chart_data = {
-                    "chart_type": str(parsed.get("chart_type", "bar")),
-                    "title": str(parsed.get("title", "Chart")),
-                    "labels": [],
-                    "values": []
-                }
+                chart_data = {}
+                
+                chart_data["chart_type"] = str(parsed.get("chart_type", "bar"))
+                chart_data["title"] = str(parsed.get("title", "Chart"))
                 
                 if "labels" in parsed and isinstance(parsed["labels"], list):
                     chart_data["labels"] = [str(label) for label in parsed["labels"]]

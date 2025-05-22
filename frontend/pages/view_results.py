@@ -282,44 +282,42 @@ try:
                     st.session_state.global_logs.append(f"Padded chart data: labels={len(labels)}, values={len(values)}")
                 
                 data = {"labels": labels, "values": values}
+                st.session_state.global_logs.append(f"Creating DataFrame with data: {data}")
+                
                 chart_df = pd.DataFrame(data)
                 st.session_state.global_logs.append(f"Created DataFrame with shape {chart_df.shape}")
                 
                 try:
                     if chart_type == "bar":
                         fig = px.bar(
-                            chart_df, 
-                            x="labels", 
-                            y="values", 
+                            x=chart_df["labels"].tolist(),  # Convert to list to avoid src property error
+                            y=chart_df["values"].tolist(),  # Convert to list to avoid src property error
                             title=title,
-                            labels={"labels": "Category", "values": "Value"}
+                            labels={"x": "Category", "y": "Value"}
                         )
                         st.plotly_chart(fig, use_container_width=True)
                     elif chart_type == "line":
                         fig = px.line(
-                            chart_df, 
-                            x="labels", 
-                            y="values", 
+                            x=chart_df["labels"].tolist(),  # Convert to list to avoid src property error
+                            y=chart_df["values"].tolist(),  # Convert to list to avoid src property error
                             title=title,
-                            labels={"labels": "Category", "values": "Value"}
+                            labels={"x": "Category", "y": "Value"}
                         )
                         st.plotly_chart(fig, use_container_width=True)
                     elif chart_type == "pie":
                         fig = px.pie(
-                            chart_df, 
-                            names="labels", 
-                            values="values", 
+                            names=chart_df["labels"].tolist(),  # Convert to list to avoid src property error
+                            values=chart_df["values"].tolist(),  # Convert to list to avoid src property error
                             title=title
                         )
                         st.plotly_chart(fig, use_container_width=True)
                     else:
                         st.warning(f"Unsupported chart type '{chart_type}', falling back to bar chart")
                         fig = px.bar(
-                            chart_df, 
-                            x="labels", 
-                            y="values", 
+                            x=chart_df["labels"].tolist(),  # Convert to list to avoid src property error
+                            y=chart_df["values"].tolist(),  # Convert to list to avoid src property error
                             title=f"{title} (Fallback Bar Chart)",
-                            labels={"labels": "Category", "values": "Value"}
+                            labels={"x": "Category", "y": "Value"}
                         )
                         st.plotly_chart(fig, use_container_width=True)
                 except Exception as e:
@@ -356,4 +354,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state)                                                                                                   
+        st.json(st.session_state)                                                                                                         
