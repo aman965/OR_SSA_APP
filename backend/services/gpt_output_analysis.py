@@ -6,6 +6,7 @@ import requests
 import streamlit as st
 import traceback
 
+
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PARENT_DIR = os.path.dirname(BASE_DIR)
 FRONTEND_DIR = os.path.join(PARENT_DIR, "frontend")
@@ -65,14 +66,15 @@ def call_chatgpt(prompt):
         try:
             model = st.secrets["openai"]["model"]
         except:
-            model = "gpt-4"  # Default to gpt-4 as per requirements
+            model = "gpt-4o"  # Default to gpt-4o as per requirements
         
         print(f"Using model: {model}")
         
         try:
-            import requests
-            
             api_key = st.secrets["openai"]["api_key"]
+            if not api_key:
+                return "Error: OpenAI API key not found in secrets"
+            
             headers = {
                 "Content-Type": "application/json",
                 "Authorization": f"Bearer {api_key}"
@@ -82,23 +84,31 @@ def call_chatgpt(prompt):
                 "model": model,
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.1,
-                "max_tokens": 1000
+                "max_tokens": 1000,
+                "response_format": {"type": "text"}  # Ensure we get plain text back
             }
             
             print("Sending direct HTTP request to OpenAI API...")
             response = requests.post(
                 "https://api.openai.com/v1/chat/completions",
                 headers=headers,
-                json=payload
+                json=payload,
+                timeout=60  # Add timeout to prevent hanging
             )
             
             print(f"Response status code: {response.status_code}")
             
             if response.status_code == 200:
-                result = response.json()
-                answer = result["choices"][0]["message"]["content"].strip()
-                print(f"Got response from OpenAI API (length: {len(answer)})")
-                return answer
+                try:
+                    result = response.json()
+                    answer = result["choices"][0]["message"]["content"].strip()
+                    print(f"Got response from OpenAI API (length: {len(answer)})")
+                    return answer
+                except Exception as e:
+                    error_msg = f"Error parsing API response: {str(e)}"
+                    print(error_msg)
+                    print(f"Response content: {response.text}")
+                    return error_msg
             else:
                 error_msg = f"Error from OpenAI API: {response.status_code} - {response.text}"
                 print(error_msg)
@@ -125,8 +135,24 @@ def parse_gpt_response(response_text):
     Returns:
         dict: Parsed response with type and data
     """
+    if response_text.startswith("Error from OpenAI API") or response_text.startswith("Error with direct API request"):
+        return {
+            "type": "error",
+            "data": response_text
+        }
+    
     try:
-        parsed = json.loads(response_text)
+        cleaned_text = response_text.strip()
+        if cleaned_text.startswith("```json"):
+            cleaned_text = cleaned_text[7:]
+        if cleaned_text.startswith("```"):
+            cleaned_text = cleaned_text[3:]
+        if cleaned_text.endswith("```"):
+            cleaned_text = cleaned_text[:-3]
+        
+        cleaned_text = cleaned_text.strip()
+        
+        parsed = json.loads(cleaned_text)
         
         if isinstance(parsed, dict) and "table" in parsed:
             return {
@@ -144,7 +170,10 @@ def parse_gpt_response(response_text):
             "type": "json",
             "data": parsed
         }
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
+        print(f"JSON decode error: {str(e)}")
+        print(f"Response text: {response_text}")
+        
         return {
             "type": "value",
             "data": response_text

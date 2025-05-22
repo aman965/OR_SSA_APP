@@ -177,11 +177,16 @@ try:
         st.session_state.gpt_analysis_loading = True
         st.session_state.global_logs.append(f"Starting GPT analysis for scenario {scenario.id} with question: {user_question}")
         try:
+            sys.path.append(os.path.join(BACKEND_PATH, "services"))
             from gpt_output_analysis import analyze_output
             
             st.session_state.global_logs.append(f"Calling analyze_output with question: {user_question} and scenario_id: {scenario.id}")
             result = analyze_output(user_question, scenario.id)
             st.session_state.global_logs.append(f"Got result from analyze_output: {result}")
+            
+            if not isinstance(result, dict) or 'type' not in result or 'data' not in result:
+                st.session_state.global_logs.append(f"Invalid result format: {result}")
+                result = {"type": "error", "data": "Invalid response format from analysis service"}
             
             st.session_state.gpt_analysis_result = result
             st.session_state.global_logs.append(f"GPT analysis completed with result type: {st.session_state.gpt_analysis_result.get('type', 'unknown')}")
@@ -284,4 +289,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state)                                                                           
+        st.json(st.session_state)                                                                                 
