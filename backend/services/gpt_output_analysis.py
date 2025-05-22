@@ -32,6 +32,13 @@ def build_gpt_prompt(user_question, scenario_config, solution_summary, input_sam
     Returns:
         str: Formatted prompt for GPT
     """
+    if not isinstance(scenario_config, dict):
+        scenario_config = {"warning": "Invalid scenario configuration format"}
+    if not isinstance(solution_summary, dict):
+        solution_summary = {"warning": "Invalid solution summary format"}
+    if not isinstance(input_sample, list):
+        input_sample = [{"warning": "Invalid input sample format"}]
+    
     prompt = f"""
 Given the following Vehicle Routing Problem (VRP) solution output, scenario configuration, and input data sample, answer the user's question below.
 
@@ -89,10 +96,17 @@ def call_chatgpt(prompt):
             }
             
             print("Sending direct HTTP request to OpenAI API...")
+            print(f"Payload structure: {type(payload)}")
+            print(f"Messages structure: {type(payload['messages'])}")
+            print(f"First message structure: {type(payload['messages'][0])}")
+            
+            payload_json = json.dumps(payload)
+            print(f"Payload JSON (first 100 chars): {payload_json[:100]}...")
+            
             response = requests.post(
                 "https://api.openai.com/v1/chat/completions",
                 headers=headers,
-                json=payload,
+                json=payload,  # requests.post will convert this to JSON
                 timeout=60  # Add timeout to prevent hanging
             )
             
@@ -156,6 +170,13 @@ def parse_gpt_response(response_text):
                 cleaned_text = parts[1].strip()
                 print(f"Extracted code from markdown: {cleaned_text[:100]}...")
         
+        if cleaned_text.replace('.', '', 1).isdigit():
+            print(f"Detected numeric value: {cleaned_text}")
+            return {
+                "type": "value",
+                "data": cleaned_text
+            }
+        
         try:
             parsed = json.loads(cleaned_text)
             print(f"Successfully parsed JSON with keys: {list(parsed.keys()) if isinstance(parsed, dict) else 'not a dict'}")
@@ -207,22 +228,18 @@ def parse_gpt_response(response_text):
                 }
             
             print("Defaulting to value format")
-            if isinstance(parsed, (int, float)) or (isinstance(parsed, str) and parsed.replace('.', '', 1).isdigit()):
+            if isinstance(parsed, (int, float)):
                 return {
                     "type": "value",
                     "data": str(parsed)
                 }
+            
             return {
                 "type": "value",
                 "data": str(parsed)
             }
         except json.JSONDecodeError as json_err:
             print(f"JSON decode error: {str(json_err)}")
-            if cleaned_text.replace('.', '', 1).isdigit():
-                return {
-                    "type": "value",
-                    "data": cleaned_text
-                }
             return {
                 "type": "value",
                 "data": cleaned_text
@@ -269,6 +286,13 @@ def analyze_output(user_question, scenario_id):
         dict: Analysis result with type and data
     """
     print(f"Starting GPT analysis for scenario {scenario_id} with question: {user_question}")
+    
+    if not user_question or not user_question.strip():
+        return {
+            "type": "error",
+            "data": "Please provide a question to analyze"
+        }
+    
     try:
         try:
             from core.models import Scenario
@@ -294,7 +318,7 @@ def analyze_output(user_question, scenario_id):
             }
         
         try:
-            scenario_config_path = os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "scenario.json")
+            scenario_config_path = os.path.normpath(os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "scenario.json"))
             print(f"Looking for scenario config at: {scenario_config_path}")
             print(f"MEDIA_ROOT is: {MEDIA_ROOT}")
             print(f"Path exists: {os.path.exists(scenario_config_path)}")
@@ -303,12 +327,21 @@ def analyze_output(user_question, scenario_id):
                 print(f"Found scenario config file")
                 with open(scenario_config_path, 'r') as f:
                     scenario_config = json.load(f)
+                print(f"Loaded scenario config with keys: {list(scenario_config.keys())}")
             else:
-                print(f"Scenario config file not found at {scenario_config_path}")
-                return {
-                    "type": "error",
-                    "data": f"Could not load scenario configuration from {scenario_config_path}"
-                }
+                alt_scenario_config_path = os.path.normpath(os.path.join(MEDIA_ROOT, "scenarios", f"scenario_{scenario_id}", "scenario.json"))
+                print(f"Primary path not found, trying alternate path: {alt_scenario_config_path}")
+                
+                if os.path.exists(alt_scenario_config_path):
+                    with open(alt_scenario_config_path, 'r') as f:
+                        scenario_config = json.load(f)
+                    print(f"Loaded scenario config from alternate path with keys: {list(scenario_config.keys())}")
+                else:
+                    print(f"Scenario config file not found at either path")
+                    return {
+                        "type": "error",
+                        "data": f"Could not load scenario configuration. Tried paths: {scenario_config_path} and {alt_scenario_config_path}"
+                    }
         except Exception as e:
             print(f"Error loading scenario config: {str(e)}")
             print(traceback.format_exc())
@@ -318,12 +351,12 @@ def analyze_output(user_question, scenario_id):
             }
         
         try:
-            solution_path = os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "outputs", "solution_summary.json")
+            solution_path = os.path.normpath(os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "outputs", "solution_summary.json"))
             print(f"Looking for solution at primary path: {solution_path}")
             print(f"Path exists: {os.path.exists(solution_path)}")
             
             if not os.path.exists(solution_path):
-                alt_solution_path = os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "solution_summary.json")
+                alt_solution_path = os.path.normpath(os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "solution_summary.json"))
                 print(f"Primary path not found, trying alternate path: {alt_solution_path}")
                 print(f"Path exists: {os.path.exists(alt_solution_path)}")
                 
@@ -331,11 +364,19 @@ def analyze_output(user_question, scenario_id):
                     solution_path = alt_solution_path
                     print(f"Found solution at alternate path")
                 else:
-                    print(f"Solution file not found at either path")
-                    return {
-                        "type": "error",
-                        "data": f"Solution file not found at {solution_path} or {alt_solution_path}"
-                    }
+                    alt_solution_path2 = os.path.normpath(os.path.join(MEDIA_ROOT, "scenarios", f"scenario_{scenario_id}", "solution_summary.json"))
+                    print(f"Second alternate path: {alt_solution_path2}")
+                    print(f"Path exists: {os.path.exists(alt_solution_path2)}")
+                    
+                    if os.path.exists(alt_solution_path2):
+                        solution_path = alt_solution_path2
+                        print(f"Found solution at second alternate path")
+                    else:
+                        print(f"Solution file not found at any path")
+                        return {
+                            "type": "error",
+                            "data": f"Solution file not found. Tried paths: {solution_path}, {alt_solution_path}, and {alt_solution_path2}"
+                        }
             
             print(f"Loading solution from {solution_path}")
             with open(solution_path, 'r') as f:
@@ -353,19 +394,27 @@ def analyze_output(user_question, scenario_id):
         try:
             if scenario.snapshot:
                 snapshot_id = scenario.snapshot.id
-                snapshot_dir = os.path.join(MEDIA_ROOT, "snapshots", f"snapshot__{snapshot_id}")
-                snapshot_path = os.path.join(snapshot_dir, "snapshot.csv")
-                print(f"Looking for snapshot CSV at: {snapshot_path}")
-                print(f"Path exists: {os.path.exists(snapshot_path)}")
+                snapshot_paths = [
+                    os.path.normpath(os.path.join(MEDIA_ROOT, "snapshots", f"snapshot__{snapshot_id}", "snapshot.csv")),
+                    os.path.normpath(os.path.join(MEDIA_ROOT, "snapshots", str(snapshot_id), "snapshot.csv")),
+                    os.path.normpath(os.path.join(MEDIA_ROOT, "snapshots", f"snapshot_{snapshot_id}", "snapshot.csv"))
+                ]
                 
-                if not os.path.exists(snapshot_path):
-                    alt_snapshot_path = os.path.join(MEDIA_ROOT, "snapshots", str(snapshot_id), "snapshot.csv")
-                    print(f"Primary path not found, trying alternate path: {alt_snapshot_path}")
-                    if os.path.exists(alt_snapshot_path):
-                        snapshot_path = alt_snapshot_path
+                snapshot_path = None
+                for path in snapshot_paths:
+                    print(f"Checking snapshot path: {path}")
+                    print(f"Path exists: {os.path.exists(path)}")
+                    if os.path.exists(path):
+                        snapshot_path = path
+                        print(f"Found snapshot at path: {snapshot_path}")
+                        break
                 
-                input_sample = get_input_sample(snapshot_path)
-                print(f"Got input sample with {len(input_sample)} rows")
+                if snapshot_path:
+                    input_sample = get_input_sample(snapshot_path)
+                    print(f"Got input sample with {len(input_sample)} rows")
+                else:
+                    print(f"Snapshot file not found at any of the tried paths")
+                    input_sample = [{"warning": f"Snapshot file not found. Tried paths: {', '.join(snapshot_paths)}"}]
             else:
                 print("No snapshot associated with this scenario")
                 input_sample = [{"warning": "No snapshot data available"}]
