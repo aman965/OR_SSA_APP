@@ -71,6 +71,7 @@ def call_chatgpt(prompt):
     
     try:
         import openai
+        from openai import OpenAI  # Import for newer OpenAI API versions
         
         try:
             model = st.secrets["openai"]["model"]
@@ -84,23 +85,40 @@ def call_chatgpt(prompt):
             if not api_key:
                 return "Error: OpenAI API key not found in secrets"
             
-            openai.api_key = api_key
-            
-            print("Sending request to OpenAI API using openai library...")
-            
-            response = openai.ChatCompletion.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,
-                max_tokens=1000
-            )
-            
-            print("Got response from OpenAI API")
-            
-            # Extract the response text
-            answer = response.choices[0].message.content.strip()
-            print(f"Response length: {len(answer)}")
-            return answer
+            try:
+                print("Trying newer OpenAI API client...")
+                client = OpenAI(api_key=api_key)
+                
+                response = client.chat.completions.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.1,
+                    max_tokens=1000
+                )
+                
+                print("Got response from OpenAI API (new client)")
+                answer = response.choices[0].message.content.strip()
+                print(f"Response length: {len(answer)}")
+                return answer
+                
+            except (AttributeError, ImportError) as e:
+                print(f"Newer OpenAI client failed: {str(e)}, falling back to legacy client")
+                
+                openai.api_key = api_key
+                
+                print("Sending request to OpenAI API using legacy client...")
+                
+                response = openai.ChatCompletion.create(
+                    model=model,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.1,
+                    max_tokens=1000
+                )
+                
+                print("Got response from OpenAI API (legacy client)")
+                answer = response.choices[0].message.content.strip()
+                print(f"Response length: {len(answer)}")
+                return answer
                 
         except Exception as e:
             error_msg = f"Error with OpenAI API request: {str(e)}"
