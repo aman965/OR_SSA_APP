@@ -246,27 +246,80 @@ try:
                 st.json(result_data)
         elif result_type == "chart":
             try:
-                chart_type = result_data.get("chart_type", "")
+                st.session_state.global_logs.append(f"Chart data: {result_data}")
+                
+                chart_type = result_data.get("chart_type", "bar")
+                title = result_data.get("title", "Chart")
+                
                 labels = result_data.get("labels", [])
                 values = result_data.get("values", [])
                 
-                if chart_type == "bar":
-                    chart_df = pd.DataFrame({"labels": labels, "values": values})
-                    fig = px.bar(chart_df, x="labels", y="values", title=result_data.get("title", "Chart"))
-                    st.plotly_chart(fig, use_container_width=True)
-                elif chart_type == "line":
-                    chart_df = pd.DataFrame({"labels": labels, "values": values})
-                    fig = px.line(chart_df, x="labels", y="values", title=result_data.get("title", "Chart"))
-                    st.plotly_chart(fig, use_container_width=True)
-                elif chart_type == "pie":
-                    chart_df = pd.DataFrame({"labels": labels, "values": values})
-                    fig = px.pie(chart_df, names="labels", values="values", title=result_data.get("title", "Chart"))
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.warning(f"Unsupported chart type: {chart_type}")
+                if not isinstance(labels, list) or not isinstance(values, list):
+                    st.warning("Invalid chart data: labels and values must be lists")
                     st.json(result_data)
+                    st.session_state.global_logs.append(f"Invalid chart data: labels={type(labels)}, values={type(values)}")
+                elif len(labels) == 0 or len(values) == 0:
+                    st.warning("Empty chart data: labels or values are empty")
+                    st.json(result_data)
+                    st.session_state.global_logs.append(f"Empty chart data: labels={len(labels)}, values={len(values)}")
+                elif len(labels) != len(values):
+                    st.warning(f"Mismatched chart data: labels ({len(labels)}) and values ({len(values)}) must have the same length")
+                    if len(labels) < len(values):
+                        labels.extend([f"Item {i+1}" for i in range(len(labels), len(values))])
+                    else:
+                        values.extend([0] * (len(labels) - len(values)))
+                    st.session_state.global_logs.append(f"Padded chart data: labels={len(labels)}, values={len(values)}")
+                
+                data = {"labels": labels, "values": values}
+                chart_df = pd.DataFrame(data)
+                st.session_state.global_logs.append(f"Created DataFrame with shape {chart_df.shape}")
+                
+                try:
+                    if chart_type == "bar":
+                        fig = px.bar(
+                            chart_df, 
+                            x="labels", 
+                            y="values", 
+                            title=title,
+                            labels={"labels": "Category", "values": "Value"}
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    elif chart_type == "line":
+                        fig = px.line(
+                            chart_df, 
+                            x="labels", 
+                            y="values", 
+                            title=title,
+                            labels={"labels": "Category", "values": "Value"}
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    elif chart_type == "pie":
+                        fig = px.pie(
+                            chart_df, 
+                            names="labels", 
+                            values="values", 
+                            title=title
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.warning(f"Unsupported chart type '{chart_type}', falling back to bar chart")
+                        fig = px.bar(
+                            chart_df, 
+                            x="labels", 
+                            y="values", 
+                            title=f"{title} (Fallback Bar Chart)",
+                            labels={"labels": "Category", "values": "Value"}
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Error creating chart: {str(e)}")
+                    st.session_state.global_logs.append(f"Error creating chart: {str(e)}")
+                    st.dataframe(chart_df)
             except Exception as e:
-                st.error(f"Error displaying chart: {str(e)}")
+                st.error(f"Error processing chart data: {str(e)}")
+                st.session_state.global_logs.append(f"Error processing chart data: {str(e)}")
+                import traceback
+                st.session_state.global_logs.append(traceback.format_exc())
                 st.json(result_data)
         else:
             st.json(result_data)
@@ -292,4 +345,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state)                                                                                       
+        st.json(st.session_state)                                                                                             
