@@ -251,13 +251,16 @@ try:
                 values = result_data.get("values", [])
                 
                 if chart_type == "bar":
-                    fig = px.bar(x=labels, y=values, title=result_data.get("title", "Chart"))
+                    chart_df = pd.DataFrame({"labels": labels, "values": values})
+                    fig = px.bar(chart_df, x="labels", y="values", title=result_data.get("title", "Chart"))
                     st.plotly_chart(fig, use_container_width=True)
                 elif chart_type == "line":
-                    fig = px.line(x=labels, y=values, title=result_data.get("title", "Chart"))
+                    chart_df = pd.DataFrame({"labels": labels, "values": values})
+                    fig = px.line(chart_df, x="labels", y="values", title=result_data.get("title", "Chart"))
                     st.plotly_chart(fig, use_container_width=True)
                 elif chart_type == "pie":
-                    fig = px.pie(names=labels, values=values, title=result_data.get("title", "Chart"))
+                    chart_df = pd.DataFrame({"labels": labels, "values": values})
+                    fig = px.pie(chart_df, names="labels", values="values", title=result_data.get("title", "Chart"))
                     st.plotly_chart(fig, use_container_width=True)
                 else:
                     st.warning(f"Unsupported chart type: {chart_type}")
@@ -289,4 +292,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state)                                                                                 
+        st.json(st.session_state)                                                                                       
