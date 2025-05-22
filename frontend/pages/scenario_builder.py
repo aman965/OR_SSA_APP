@@ -7,6 +7,10 @@ import django
 import json
 import subprocess
 from datetime import datetime # Added for time tracking
+from frontend.components.api_client import (
+    get_snapshots, get_scenarios, create_scenario,
+    add_constraint_prompt
+)
 
 # Add the backend directory to the Python path for Django ORM access
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

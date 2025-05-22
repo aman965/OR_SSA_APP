@@ -64,4 +64,16 @@ def create_scenario(data):
         return response.json()
     else:
         st.error(f"Failed to create scenario: {response.status_code}")
+        return None
+
+def add_constraint_prompt(scenario_id: str, prompt: str) -> dict | None:
+    """Add a constraint prompt to a scenario."""
+    response = requests.post(
+        f"{API_BASE_URL}/scenarios/{scenario_id}/add_constraint/",
+        json={"prompt": prompt}
+    )
+    if response.status_code == 200:
+        return response.json()
+    else:
+        st.error(f"Failed to add constraint: {response.status_code}")
         return None 
