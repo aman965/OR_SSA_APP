@@ -61,31 +61,22 @@ def call_chatgpt(prompt):
         str: GPT's response
     """
     print("Initializing OpenAI API...")
-    if not init_openai_api():
-        print("Failed to initialize OpenAI API")
-        return "Error: Could not initialize OpenAI API"
     
     try:
-        model = get_gpt_model()
+        try:
+            model = st.secrets["openai"]["model"]
+        except:
+            model = "gpt-4"  # Default to gpt-4 as per requirements
+        
         print(f"Using model: {model}")
         
         try:
-            openai.api_key = st.secrets["openai"]["api_key"]
-            response = openai.ChatCompletion.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,
-                max_tokens=1000
-            )
-            answer = response.choices[0].message['content'].strip()
-            print(f"Got response from OpenAI API (length: {len(answer)})")
-            return answer
-        except Exception as e:
-            print(f"Error with legacy API format: {str(e)}")
-            print("Trying new OpenAI client format")
+            print("Trying with new OpenAI client...")
             from openai import OpenAI
-            client_kwargs = {"api_key": st.secrets["openai"]["api_key"]}
-            client = OpenAI(**client_kwargs)
+            
+            api_key = st.secrets["openai"]["api_key"]
+            client = OpenAI(api_key=api_key)
+            
             response = client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
@@ -94,6 +85,21 @@ def call_chatgpt(prompt):
             )
             answer = response.choices[0].message.content.strip()
             print(f"Got response from OpenAI API (length: {len(answer)})")
+            return answer
+        except Exception as e:
+            print(f"Error with new client format: {str(e)}")
+            print(traceback.format_exc())
+            
+            print("Falling back to legacy OpenAI format...")
+            openai.api_key = st.secrets["openai"]["api_key"]
+            response = openai.ChatCompletion.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=1000
+            )
+            answer = response.choices[0].message['content'].strip()
+            print(f"Got response from legacy OpenAI API (length: {len(answer)})")
             return answer
     except Exception as e:
         error_msg = f"Error calling OpenAI API: {str(e)}"
