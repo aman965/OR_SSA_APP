@@ -84,7 +84,8 @@ def call_chatgpt(prompt):
             print(f"Error with legacy API format: {str(e)}")
             print("Trying new OpenAI client format")
             from openai import OpenAI
-            client = OpenAI(api_key=st.secrets["openai"]["api_key"])
+            client_kwargs = {"api_key": st.secrets["openai"]["api_key"]}
+            client = OpenAI(**client_kwargs)
             response = client.chat.completions.create(
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
