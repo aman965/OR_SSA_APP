@@ -4,14 +4,20 @@ import sys
 import pandas as pd
 import openai
 import streamlit as st
+import traceback
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PARENT_DIR = os.path.dirname(BASE_DIR)
 FRONTEND_DIR = os.path.join(PARENT_DIR, "frontend")
 MEDIA_ROOT = os.path.abspath(os.path.join(PARENT_DIR, "media"))
 sys.path.append(FRONTEND_DIR)
+sys.path.append(BASE_DIR)  # Add backend to path for Django imports
 
 from components.openai_utils import init_openai_api, get_gpt_model
+
+os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'orsaas_backend.settings')
+import django
+django.setup()
 
 def build_gpt_prompt(user_question, scenario_config, solution_summary, input_sample):
     """
@@ -54,21 +60,42 @@ def call_chatgpt(prompt):
     Returns:
         str: GPT's response
     """
+    print("Initializing OpenAI API...")
     if not init_openai_api():
+        print("Failed to initialize OpenAI API")
         return "Error: Could not initialize OpenAI API"
     
     try:
         model = get_gpt_model()
-        response = openai.ChatCompletion.create(
-            model=model,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.1,
-            max_tokens=1000
-        )
-        answer = response.choices[0].message['content'].strip()
-        return answer
+        print(f"Using model: {model}")
+        
+        try:
+            client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=1000
+            )
+            answer = response.choices[0].message.content.strip()
+            print(f"Got response from OpenAI API (length: {len(answer)})")
+            return answer
+        except AttributeError:
+            print("Using legacy OpenAI API format")
+            response = openai.ChatCompletion.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=1000
+            )
+            answer = response.choices[0].message['content'].strip()
+            print(f"Got response from OpenAI API (length: {len(answer)})")
+            return answer
     except Exception as e:
-        return f"Error calling OpenAI API: {str(e)}"
+        error_msg = f"Error calling OpenAI API: {str(e)}"
+        print(error_msg)
+        print(traceback.format_exc())
+        return error_msg
 
 def parse_gpt_response(response_text):
     """
@@ -138,69 +165,127 @@ def analyze_output(user_question, scenario_id):
     """
     print(f"Starting GPT analysis for scenario {scenario_id} with question: {user_question}")
     try:
-        from core.models import Scenario
-        
-        print(f"Fetching scenario {scenario_id} from database")
-        scenario = Scenario.objects.select_related('snapshot').get(id=scenario_id)
-        print(f"Found scenario: {scenario.name} with snapshot: {scenario.snapshot.name}")
-        
-        scenario_config_path = os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "scenario.json")
-        print(f"Looking for scenario config at: {scenario_config_path}")
-        if os.path.exists(scenario_config_path):
-            print(f"Found scenario config file")
-            with open(scenario_config_path, 'r') as f:
-                scenario_config = json.load(f)
-        else:
-            print(f"Scenario config file not found at {scenario_config_path}")
+        try:
+            from core.models import Scenario
+            print("Successfully imported Django models")
+        except Exception as e:
+            print(f"Error importing Django models: {str(e)}")
+            print(traceback.format_exc())
             return {
                 "type": "error",
-                "data": f"Could not load scenario configuration from {scenario_config_path}"
+                "data": f"Error importing Django models: {str(e)}"
             }
         
-        solution_path = os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "outputs", "solution_summary.json")
-        print(f"Looking for solution at primary path: {solution_path}")
-        if not os.path.exists(solution_path):
-            alt_solution_path = os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "solution_summary.json")
-            print(f"Primary path not found, trying alternate path: {alt_solution_path}")
-            if os.path.exists(alt_solution_path):
-                solution_path = alt_solution_path
-                print(f"Found solution at alternate path")
+        try:
+            print(f"Fetching scenario {scenario_id} from database")
+            scenario = Scenario.objects.select_related('snapshot').get(id=scenario_id)
+            print(f"Found scenario: {scenario.name} with snapshot: {scenario.snapshot.name if scenario.snapshot else 'None'}")
+        except Exception as e:
+            print(f"Error fetching scenario from database: {str(e)}")
+            print(traceback.format_exc())
+            return {
+                "type": "error",
+                "data": f"Error fetching scenario from database: {str(e)}"
+            }
+        
+        try:
+            scenario_config_path = os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "scenario.json")
+            print(f"Looking for scenario config at: {scenario_config_path}")
+            print(f"MEDIA_ROOT is: {MEDIA_ROOT}")
+            print(f"Path exists: {os.path.exists(scenario_config_path)}")
+            
+            if os.path.exists(scenario_config_path):
+                print(f"Found scenario config file")
+                with open(scenario_config_path, 'r') as f:
+                    scenario_config = json.load(f)
             else:
-                print(f"Solution file not found at either path")
+                print(f"Scenario config file not found at {scenario_config_path}")
                 return {
                     "type": "error",
-                    "data": f"Solution file not found at {solution_path} or {alt_solution_path}"
+                    "data": f"Could not load scenario configuration from {scenario_config_path}"
                 }
+        except Exception as e:
+            print(f"Error loading scenario config: {str(e)}")
+            print(traceback.format_exc())
+            return {
+                "type": "error",
+                "data": f"Error loading scenario config: {str(e)}"
+            }
         
-        print(f"Loading solution from {solution_path}")
-        with open(solution_path, 'r') as f:
-            solution_summary = json.load(f)
+        try:
+            solution_path = os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "outputs", "solution_summary.json")
+            print(f"Looking for solution at primary path: {solution_path}")
+            print(f"Path exists: {os.path.exists(solution_path)}")
+            
+            if not os.path.exists(solution_path):
+                alt_solution_path = os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "solution_summary.json")
+                print(f"Primary path not found, trying alternate path: {alt_solution_path}")
+                print(f"Path exists: {os.path.exists(alt_solution_path)}")
+                
+                if os.path.exists(alt_solution_path):
+                    solution_path = alt_solution_path
+                    print(f"Found solution at alternate path")
+                else:
+                    print(f"Solution file not found at either path")
+                    return {
+                        "type": "error",
+                        "data": f"Solution file not found at {solution_path} or {alt_solution_path}"
+                    }
+            
+            print(f"Loading solution from {solution_path}")
+            with open(solution_path, 'r') as f:
+                solution_summary = json.load(f)
+            print(f"Solution loaded successfully with keys: {list(solution_summary.keys())}")
+        except Exception as e:
+            print(f"Error loading solution: {str(e)}")
+            print(traceback.format_exc())
+            return {
+                "type": "error",
+                "data": f"Error loading solution: {str(e)}"
+            }
         
         # Load snapshot CSV file
-        snapshot_id = scenario.snapshot.id
-        snapshot_path = os.path.join(MEDIA_ROOT, "snapshots", f"snapshot__{snapshot_id}", "snapshot.csv")
-        print(f"Looking for snapshot CSV at: {snapshot_path}")
+        try:
+            if scenario.snapshot:
+                snapshot_id = scenario.snapshot.id
+                snapshot_path = os.path.join(MEDIA_ROOT, "snapshots", f"snapshot__{snapshot_id}", "snapshot.csv")
+                print(f"Looking for snapshot CSV at: {snapshot_path}")
+                print(f"Path exists: {os.path.exists(snapshot_path)}")
+                
+                input_sample = get_input_sample(snapshot_path)
+                print(f"Got input sample with {len(input_sample)} rows")
+            else:
+                print("No snapshot associated with this scenario")
+                input_sample = [{"warning": "No snapshot data available"}]
+        except Exception as e:
+            print(f"Error loading snapshot: {str(e)}")
+            print(traceback.format_exc())
+            input_sample = [{"error": f"Failed to load input sample: {str(e)}"}]
         
-        input_sample = get_input_sample(snapshot_path)
-        print(f"Got input sample with {len(input_sample)} rows")
-        
-        print("Building GPT prompt")
-        prompt = build_gpt_prompt(user_question, scenario_config, solution_summary, input_sample)
-        
-        print("Calling OpenAI API")
-        gpt_response = call_chatgpt(prompt)
-        print(f"Got GPT response of length: {len(gpt_response)}")
-        
-        print("Parsing GPT response")
-        parsed_response = parse_gpt_response(gpt_response)
-        print(f"Parsed response type: {parsed_response.get('type', 'unknown')}")
-        
-        return parsed_response
+        try:
+            print("Building GPT prompt")
+            prompt = build_gpt_prompt(user_question, scenario_config, solution_summary, input_sample)
+            
+            print("Calling OpenAI API")
+            gpt_response = call_chatgpt(prompt)
+            print(f"Got GPT response of length: {len(gpt_response)}")
+            
+            print("Parsing GPT response")
+            parsed_response = parse_gpt_response(gpt_response)
+            print(f"Parsed response type: {parsed_response.get('type', 'unknown')}")
+            
+            return parsed_response
+        except Exception as e:
+            print(f"Error in GPT processing: {str(e)}")
+            print(traceback.format_exc())
+            return {
+                "type": "error",
+                "data": f"Error in GPT processing: {str(e)}"
+            }
     except Exception as e:
-        import traceback
-        print(f"Error in analyze_output: {str(e)}")
+        print(f"Unexpected error in analyze_output: {str(e)}")
         print(traceback.format_exc())
         return {
             "type": "error",
-            "data": f"Error analyzing output: {str(e)}"
+            "data": f"Unexpected error: {str(e)}"
         }

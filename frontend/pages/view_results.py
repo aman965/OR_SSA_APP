@@ -179,17 +179,37 @@ try:
         st.session_state.gpt_analysis_loading = True
         st.session_state.global_logs.append(f"Starting GPT analysis for scenario {scenario.id} with question: {user_question}")
         try:
-            st.session_state.gpt_analysis_result = analyze_output(user_question, scenario.id)
+            import sys
+            import os
+            BACKEND_PATH = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "backend"))
+            SERVICES_PATH = os.path.join(BACKEND_PATH, "services")
+            sys.path.append(SERVICES_PATH)
+            
+            import importlib
+            import gpt_output_analysis
+            importlib.reload(gpt_output_analysis)
+            
+            st.session_state.global_logs.append(f"Calling analyze_output with question: {user_question} and scenario_id: {scenario.id}")
+            result = gpt_output_analysis.analyze_output(user_question, scenario.id)
+            st.session_state.global_logs.append(f"Got result from analyze_output: {result}")
+            
+            st.session_state.gpt_analysis_result = result
             st.session_state.global_logs.append(f"GPT analysis completed with result type: {st.session_state.gpt_analysis_result.get('type', 'unknown')}")
         except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
             st.session_state.global_logs.append(f"Error in GPT analysis: {str(e)}")
+            st.session_state.global_logs.append(f"Error details: {error_details}")
             st.session_state.gpt_analysis_result = {"type": "error", "data": f"Error: {str(e)}"}
+        
         st.session_state.gpt_analysis_loading = False
     
     # Submit button for GPT analysis
     if st.button("Analyze", key="analyze_button", disabled=not user_question or st.session_state.gpt_analysis_loading):
         st.session_state.global_logs.append("Analyze button clicked")
+        st.write("Starting analysis...")
         run_gpt_analysis()
+        st.experimental_rerun()  # Force Streamlit to rerun after analysis completes
     
     if st.session_state.gpt_analysis_loading:
         with st.spinner("Analyzing solution..."):
@@ -261,4 +281,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state)                           
+        st.json(st.session_state)                                       
