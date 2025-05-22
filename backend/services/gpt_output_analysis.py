@@ -2,9 +2,9 @@ import os
 import json
 import sys
 import pandas as pd
-import requests
 import streamlit as st
 import traceback
+from typing import Dict, List, Union, Any
 
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -57,7 +57,7 @@ Only return the answer in the required format; do not include extra explanation 
 """
     return prompt
 
-def call_chatgpt(prompt, model=None):
+def call_chatgpt(prompt: str, model: str = None) -> str:
     """
     Call the OpenAI API with the given prompt using the openai library
     
@@ -71,7 +71,13 @@ def call_chatgpt(prompt, model=None):
     print("Initializing OpenAI API via openai library...")
     
     try:
-        import openai
+        try:
+            import openai
+            print(f"Successfully imported openai version: {openai.__version__ if hasattr(openai, '__version__') else 'unknown'}")
+        except ImportError as e:
+            error_msg = f"Error importing openai library: {str(e)}. Make sure it's installed with 'pip install openai'."
+            print(error_msg)
+            return error_msg
         
         if model is None:
             try:
@@ -84,102 +90,102 @@ def call_chatgpt(prompt, model=None):
         print(f"Using model: {model}")
         
         try:
-            try:
-                api_key = st.secrets["openai"]["api_key"]
-                print("Found API key in secrets")
-            except Exception as e:
-                print(f"Error getting API key from secrets: {str(e)}")
-                return f"Error: OpenAI API key not found in secrets: {str(e)}"
+            api_key = st.secrets["openai"]["api_key"]
+            print(f"Found API key in secrets (first 5 chars): {api_key[:5]}...")
+        except Exception as e:
+            print(f"Error getting API key from secrets: {str(e)}")
+            return f"Error: OpenAI API key not found in secrets: {str(e)}"
+        
+        if not api_key:
+            return "Error: OpenAI API key is empty in secrets"
+        
+        try:
+            from openai import OpenAI
+            print("Using newer OpenAI client (>= 1.0.0)")
             
-            if not api_key:
-                return "Error: OpenAI API key is empty in secrets"
+            client = OpenAI(api_key=api_key)
+            print("Created OpenAI client")
             
-            # Set API key for openai library
+            # Create messages as a list of dictionaries
+            messages = [{"role": "user", "content": prompt}]
+            print(f"Messages type: {type(messages)}")
+            print(f"First message type: {type(messages[0])}")
+            
+            payload = {
+                "model": model,
+                "messages": messages,
+                "temperature": 0.1,
+                "max_tokens": 1000,
+                "response_format": {"type": "text"}  # Ensure we get plain text back
+            }
+            
+            print(f"Payload type: {type(payload)}")
+            print(f"Payload keys: {list(payload.keys())}")
+            
+            response = client.chat.completions.create(**payload)
+            print("Got response from OpenAI API (new client)")
+            
+            answer = response.choices[0].message.content.strip()
+            print(f"Response length: {len(answer)}")
+            return answer
+            
+        except (AttributeError, ImportError, ModuleNotFoundError) as e:
+            print(f"Newer OpenAI client failed: {str(e)}, falling back to legacy client")
+            
+            print("Using legacy OpenAI client (< 1.0.0)")
+            
+            # Set API key for legacy client
             openai.api_key = api_key
-            print("Set API key for openai library")
+            print("Set API key for legacy openai library")
             
-            try:
-                from openai import OpenAI
-                print("Using newer OpenAI client (>= 1.0.0)")
-                
-                client = OpenAI(api_key=api_key)
-                print("Created OpenAI client")
+            if hasattr(openai, 'ChatCompletion'):
+                # Create messages as a list of dictionaries
+                messages = [{"role": "user", "content": prompt}]
+                print(f"Messages type: {type(messages)}")
+                print(f"First message type: {type(messages[0])}")
                 
                 payload = {
                     "model": model,
-                    "messages": [{"role": "user", "content": prompt}],
+                    "messages": messages,
                     "temperature": 0.1,
-                    "max_tokens": 1000,
-                    "response_format": {"type": "text"}  # Ensure we get plain text back
+                    "max_tokens": 1000
                 }
                 
-                print(f"Sending request to OpenAI API with payload keys: {list(payload.keys())}")
-                print(f"Messages type: {type(payload['messages'])}")
+                print(f"Payload type: {type(payload)}")
+                print(f"Payload keys: {list(payload.keys())}")
                 
-                response = client.chat.completions.create(**payload)
-                print("Got response from OpenAI API (new client)")
+                response = openai.ChatCompletion.create(**payload)
+                print("Got response from OpenAI API (legacy client)")
                 
-                answer = response.choices[0].message.content.strip()
+                answer = response.choices[0].message['content'].strip()
                 print(f"Response length: {len(answer)}")
                 return answer
+            else:
+                print("ChatCompletion not available, using Completion API")
                 
-            except (AttributeError, ImportError, ModuleNotFoundError) as e:
-                print(f"Newer OpenAI client failed: {str(e)}, falling back to legacy client")
+                payload = {
+                    "engine": model,
+                    "prompt": prompt,
+                    "temperature": 0.1,
+                    "max_tokens": 1000
+                }
                 
-                print("Using legacy OpenAI client (< 1.0.0)")
+                print(f"Payload type: {type(payload)}")
+                print(f"Payload keys: {list(payload.keys())}")
                 
-                if hasattr(openai, 'ChatCompletion'):
-                    payload = {
-                        "model": model,
-                        "messages": [{"role": "user", "content": prompt}],
-                        "temperature": 0.1,
-                        "max_tokens": 1000
-                    }
-                    
-                    print(f"Sending request to OpenAI API with payload keys: {list(payload.keys())}")
-                    print(f"Messages type: {type(payload['messages'])}")
-                    
-                    response = openai.ChatCompletion.create(**payload)
-                    print("Got response from OpenAI API (legacy client)")
-                    
-                    answer = response.choices[0].message['content'].strip()
-                    print(f"Response length: {len(answer)}")
-                    return answer
-                else:
-                    print("ChatCompletion not available, using Completion API")
-                    
-                    payload = {
-                        "engine": model,
-                        "prompt": prompt,
-                        "temperature": 0.1,
-                        "max_tokens": 1000
-                    }
-                    
-                    print(f"Sending request to OpenAI API with payload keys: {list(payload.keys())}")
-                    
-                    response = openai.Completion.create(**payload)
-                    print("Got response from OpenAI API (Completion API)")
-                    
-                    answer = response.choices[0].text.strip()
-                    print(f"Response length: {len(answer)}")
-                    return answer
+                response = openai.Completion.create(**payload)
+                print("Got response from OpenAI API (Completion API)")
                 
-        except Exception as e:
-            error_msg = f"Error with OpenAI API request: {str(e)}"
-            print(error_msg)
-            print(traceback.format_exc())
-            return error_msg
-    except ImportError as e:
-        error_msg = f"Error importing openai library: {str(e)}. Make sure it's installed with 'pip install openai'."
-        print(error_msg)
-        return error_msg
+                answer = response.choices[0].text.strip()
+                print(f"Response length: {len(answer)}")
+                return answer
     except Exception as e:
-        error_msg = f"Error calling OpenAI API: {str(e)}"
+        error_msg = f"Error with OpenAI API request: {str(e)}"
         print(error_msg)
         print(traceback.format_exc())
         return error_msg
 
-def parse_gpt_response(response_text):
+def parse_gpt_response(response_text: str) -> Dict[str, Any]:
     """
     Parse GPT's response into appropriate format (value, table, or chart)
     
@@ -189,13 +195,20 @@ def parse_gpt_response(response_text):
     Returns:
         dict: Parsed response with type and data
     """
-    if response_text.startswith("Error from OpenAI API") or response_text.startswith("Error with direct API request"):
+    if not response_text:
+        return {
+            "type": "error",
+            "data": "Empty response from GPT"
+        }
+        
+    if response_text.startswith("Error"):
         return {
             "type": "error",
             "data": response_text
         }
     
     try:
+        # Clean up the response text
         cleaned_text = response_text.strip()
         print(f"Original response text: {cleaned_text[:100]}...")
         
@@ -219,59 +232,63 @@ def parse_gpt_response(response_text):
         
         try:
             parsed = json.loads(cleaned_text)
-            print(f"Successfully parsed JSON with keys: {list(parsed.keys()) if isinstance(parsed, dict) else 'not a dict'}")
+            print(f"Successfully parsed JSON with type: {type(parsed)}")
             
-            if isinstance(parsed, dict) and "table" in parsed:
-                print("Detected table format")
-                return {
-                    "type": "table",
-                    "data": parsed["table"]
-                }
-            
-            if isinstance(parsed, dict) and "chart_type" in parsed:
-                print(f"Detected chart format of type: {parsed.get('chart_type')}")
+            if isinstance(parsed, dict):
+                print(f"Parsed JSON keys: {list(parsed.keys())}")
                 
-                chart_data = {}
+                if "table" in parsed and isinstance(parsed["table"], list):
+                    print("Detected table format")
+                    return {
+                        "type": "table",
+                        "data": parsed["table"]
+                    }
                 
-                chart_data["chart_type"] = str(parsed.get("chart_type", "bar"))
-                chart_data["title"] = str(parsed.get("title", "Chart"))
-                
-                if "labels" in parsed and isinstance(parsed["labels"], list):
-                    chart_data["labels"] = [str(label) for label in parsed["labels"]]
-                else:
-                    chart_data["labels"] = ["No Data"]
-                    print("Warning: Invalid or missing labels in chart data")
-                
-                if "values" in parsed and isinstance(parsed["values"], list):
-                    try:
-                        chart_data["values"] = [float(val) for val in parsed["values"]]
-                    except (ValueError, TypeError):
-                        print("Warning: Non-numeric values in chart data, using defaults")
-                        chart_data["values"] = [0] * len(chart_data["labels"])
-                else:
-                    chart_data["values"] = [0] * len(chart_data["labels"])
-                    print("Warning: Invalid or missing values in chart data")
-                
-                if len(chart_data["labels"]) != len(chart_data["values"]):
-                    print(f"Warning: Mismatched lengths - labels: {len(chart_data['labels'])}, values: {len(chart_data['values'])}")
-                    if len(chart_data["labels"]) > len(chart_data["values"]):
-                        chart_data["values"].extend([0] * (len(chart_data["labels"]) - len(chart_data["values"])))
+                if "chart_type" in parsed:
+                    print(f"Detected chart format of type: {parsed.get('chart_type')}")
+                    
+                    chart_data = {}
+                    
+                    chart_data["chart_type"] = str(parsed.get("chart_type", "bar"))
+                    chart_data["title"] = str(parsed.get("title", "Chart"))
+                    
+                    if "labels" in parsed and isinstance(parsed["labels"], list):
+                        chart_data["labels"] = [str(label) for label in parsed["labels"]]
                     else:
-                        chart_data["labels"].extend([f"Item {i+1}" for i in range(len(chart_data["labels"]), len(chart_data["values"]))])
-                
-                print(f"Returning chart data: {chart_data}")
-                return {
-                    "type": "chart",
-                    "data": chart_data
-                }
+                        chart_data["labels"] = ["No Data"]
+                        print("Warning: Invalid or missing labels in chart data")
+                    
+                    if "values" in parsed and isinstance(parsed["values"], list):
+                        try:
+                            chart_data["values"] = [float(val) for val in parsed["values"]]
+                        except (ValueError, TypeError):
+                            print("Warning: Non-numeric values in chart data, using defaults")
+                            chart_data["values"] = [0] * len(chart_data["labels"])
+                    else:
+                        chart_data["values"] = [0] * len(chart_data["labels"])
+                        print("Warning: Invalid or missing values in chart data")
+                    
+                    if len(chart_data["labels"]) != len(chart_data["values"]):
+                        print(f"Warning: Mismatched lengths - labels: {len(chart_data['labels'])}, values: {len(chart_data['values'])}")
+                        if len(chart_data["labels"]) > len(chart_data["values"]):
+                            chart_data["values"].extend([0] * (len(chart_data["labels"]) - len(chart_data["values"])))
+                        else:
+                            chart_data["labels"].extend([f"Item {i+1}" for i in range(len(chart_data["labels"]), len(chart_data["values"]))])
+                    
+                    print(f"Returning chart data: {chart_data}")
+                    return {
+                        "type": "chart",
+                        "data": chart_data
+                    }
             
-            print("Defaulting to value format")
             if isinstance(parsed, (int, float)):
+                print(f"Detected numeric value from JSON: {parsed}")
                 return {
                     "type": "value",
                     "data": str(parsed)
                 }
             
+            print("Defaulting to value format")
             return {
                 "type": "value",
                 "data": str(parsed)
@@ -312,7 +329,7 @@ def get_input_sample(snapshot_csv_path, n=5):
     except Exception as e:
         return [{"error": f"Failed to load input sample: {str(e)}"}]
 
-def analyze_output(user_question, scenario_id):
+def analyze_output(user_question: str, scenario_id: int) -> Dict[str, Any]:
     """
     Main function to analyze VRP output based on user question
     
@@ -356,30 +373,34 @@ def analyze_output(user_question, scenario_id):
             }
         
         try:
-            scenario_config_path = os.path.normpath(os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "scenario.json"))
-            print(f"Looking for scenario config at: {scenario_config_path}")
-            print(f"MEDIA_ROOT is: {MEDIA_ROOT}")
-            print(f"Path exists: {os.path.exists(scenario_config_path)}")
+            scenario_config_paths = [
+                os.path.normpath(os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "scenario.json")),
+                os.path.normpath(os.path.join(MEDIA_ROOT, "scenarios", f"scenario_{scenario_id}", "scenario.json"))
+            ]
             
-            if os.path.exists(scenario_config_path):
-                print(f"Found scenario config file")
-                with open(scenario_config_path, 'r') as f:
-                    scenario_config = json.load(f)
-                print(f"Loaded scenario config with keys: {list(scenario_config.keys())}")
-            else:
-                alt_scenario_config_path = os.path.normpath(os.path.join(MEDIA_ROOT, "scenarios", f"scenario_{scenario_id}", "scenario.json"))
-                print(f"Primary path not found, trying alternate path: {alt_scenario_config_path}")
+            scenario_config = None
+            scenario_config_path = None
+            
+            for path in scenario_config_paths:
+                print(f"Checking scenario config path: {path}")
+                print(f"Path exists: {os.path.exists(path)}")
                 
-                if os.path.exists(alt_scenario_config_path):
-                    with open(alt_scenario_config_path, 'r') as f:
+                if os.path.exists(path):
+                    scenario_config_path = path
+                    print(f"Found scenario config at: {scenario_config_path}")
+                    
+                    with open(scenario_config_path, 'r') as f:
                         scenario_config = json.load(f)
-                    print(f"Loaded scenario config from alternate path with keys: {list(scenario_config.keys())}")
-                else:
-                    print(f"Scenario config file not found at either path")
-                    return {
-                        "type": "error",
-                        "data": f"Could not load scenario configuration. Tried paths: {scenario_config_path} and {alt_scenario_config_path}"
-                    }
+                    
+                    print(f"Loaded scenario config with keys: {list(scenario_config.keys())}")
+                    break
+            
+            if not scenario_config:
+                print(f"Scenario config file not found at any path")
+                return {
+                    "type": "error",
+                    "data": f"Could not load scenario configuration. Tried paths: {', '.join(scenario_config_paths)}"
+                }
         except Exception as e:
             print(f"Error loading scenario config: {str(e)}")
             print(traceback.format_exc())
@@ -389,37 +410,35 @@ def analyze_output(user_question, scenario_id):
             }
         
         try:
-            solution_path = os.path.normpath(os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "outputs", "solution_summary.json"))
-            print(f"Looking for solution at primary path: {solution_path}")
-            print(f"Path exists: {os.path.exists(solution_path)}")
+            solution_paths = [
+                os.path.normpath(os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "outputs", "solution_summary.json")),
+                os.path.normpath(os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "solution_summary.json")),
+                os.path.normpath(os.path.join(MEDIA_ROOT, "scenarios", f"scenario_{scenario_id}", "solution_summary.json"))
+            ]
             
-            if not os.path.exists(solution_path):
-                alt_solution_path = os.path.normpath(os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "solution_summary.json"))
-                print(f"Primary path not found, trying alternate path: {alt_solution_path}")
-                print(f"Path exists: {os.path.exists(alt_solution_path)}")
+            solution_summary = None
+            solution_path = None
+            
+            for path in solution_paths:
+                print(f"Checking solution path: {path}")
+                print(f"Path exists: {os.path.exists(path)}")
                 
-                if os.path.exists(alt_solution_path):
-                    solution_path = alt_solution_path
-                    print(f"Found solution at alternate path")
-                else:
-                    alt_solution_path2 = os.path.normpath(os.path.join(MEDIA_ROOT, "scenarios", f"scenario_{scenario_id}", "solution_summary.json"))
-                    print(f"Second alternate path: {alt_solution_path2}")
-                    print(f"Path exists: {os.path.exists(alt_solution_path2)}")
+                if os.path.exists(path):
+                    solution_path = path
+                    print(f"Found solution at: {solution_path}")
                     
-                    if os.path.exists(alt_solution_path2):
-                        solution_path = alt_solution_path2
-                        print(f"Found solution at second alternate path")
-                    else:
-                        print(f"Solution file not found at any path")
-                        return {
-                            "type": "error",
-                            "data": f"Solution file not found. Tried paths: {solution_path}, {alt_solution_path}, and {alt_solution_path2}"
-                        }
+                    with open(solution_path, 'r') as f:
+                        solution_summary = json.load(f)
+                    
+                    print(f"Loaded solution with keys: {list(solution_summary.keys())}")
+                    break
             
-            print(f"Loading solution from {solution_path}")
-            with open(solution_path, 'r') as f:
-                solution_summary = json.load(f)
-            print(f"Solution loaded successfully with keys: {list(solution_summary.keys())}")
+            if not solution_summary:
+                print(f"Solution file not found at any path")
+                return {
+                    "type": "error",
+                    "data": f"Solution file not found. Tried paths: {', '.join(solution_paths)}"
+                }
         except Exception as e:
             print(f"Error loading solution: {str(e)}")
             print(traceback.format_exc())
@@ -430,8 +449,11 @@ def analyze_output(user_question, scenario_id):
         
         # Load snapshot CSV file
         try:
+            input_sample = []
+            
             if scenario.snapshot:
                 snapshot_id = scenario.snapshot.id
+                
                 snapshot_paths = [
                     os.path.normpath(os.path.join(MEDIA_ROOT, "snapshots", f"snapshot__{snapshot_id}", "snapshot.csv")),
                     os.path.normpath(os.path.join(MEDIA_ROOT, "snapshots", str(snapshot_id), "snapshot.csv")),
@@ -439,19 +461,21 @@ def analyze_output(user_question, scenario_id):
                 ]
                 
                 snapshot_path = None
+                
                 for path in snapshot_paths:
                     print(f"Checking snapshot path: {path}")
                     print(f"Path exists: {os.path.exists(path)}")
+                    
                     if os.path.exists(path):
                         snapshot_path = path
-                        print(f"Found snapshot at path: {snapshot_path}")
+                        print(f"Found snapshot at: {snapshot_path}")
                         break
                 
                 if snapshot_path:
                     input_sample = get_input_sample(snapshot_path)
                     print(f"Got input sample with {len(input_sample)} rows")
                 else:
-                    print(f"Snapshot file not found at any of the tried paths")
+                    print(f"Snapshot file not found at any path")
                     input_sample = [{"warning": f"Snapshot file not found. Tried paths: {', '.join(snapshot_paths)}"}]
             else:
                 print("No snapshot associated with this scenario")
@@ -479,7 +503,7 @@ def analyze_output(user_question, scenario_id):
             print("Parsing GPT response")
             parsed_response = parse_gpt_response(gpt_response)
             print(f"Parsed response type: {parsed_response.get('type', 'unknown')}")
-            print(f"Parsed response data: {parsed_response.get('data', 'none')}")
+            print(f"Parsed response data: {type(parsed_response.get('data', None))}")
             
             if not isinstance(parsed_response, dict) or 'type' not in parsed_response or 'data' not in parsed_response:
                 print(f"Invalid parsed response format: {parsed_response}")
@@ -490,6 +514,7 @@ def analyze_output(user_question, scenario_id):
             
             if parsed_response.get('type') == 'chart':
                 chart_data = parsed_response.get('data', {})
+                
                 if not isinstance(chart_data, dict):
                     print(f"Chart data is not a dictionary: {chart_data}")
                     return {
