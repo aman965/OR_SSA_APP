@@ -59,7 +59,7 @@ Only return the answer in the required format; do not include extra explanation 
 
 def call_chatgpt(prompt):
     """
-    Call the OpenAI API with the given prompt using direct HTTP requests
+    Call the OpenAI API with the given prompt using the openai library
     
     Args:
         prompt (str): The prompt to send to GPT
@@ -67,9 +67,11 @@ def call_chatgpt(prompt):
     Returns:
         str: GPT's response
     """
-    print("Initializing OpenAI API via direct HTTP request...")
+    print("Initializing OpenAI API via openai library...")
     
     try:
+        import openai
+        
         try:
             model = st.secrets["openai"]["model"]
         except:
@@ -82,57 +84,33 @@ def call_chatgpt(prompt):
             if not api_key:
                 return "Error: OpenAI API key not found in secrets"
             
-            headers = {
-                "Content-Type": "application/json",
-                "Authorization": f"Bearer {api_key}"
-            }
+            openai.api_key = api_key
             
-            payload = {
-                "model": model,
-                "messages": [{"role": "user", "content": prompt}],
-                "temperature": 0.1,
-                "max_tokens": 1000,
-                "response_format": {"type": "text"}  # Ensure we get plain text back
-            }
+            print("Sending request to OpenAI API using openai library...")
             
-            print("Sending direct HTTP request to OpenAI API...")
-            print(f"Payload structure: {type(payload)}")
-            print(f"Messages structure: {type(payload['messages'])}")
-            print(f"First message structure: {type(payload['messages'][0])}")
-            
-            payload_json = json.dumps(payload)
-            print(f"Payload JSON (first 100 chars): {payload_json[:100]}...")
-            
-            response = requests.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers=headers,
-                json=payload,  # requests.post will convert this to JSON
-                timeout=60  # Add timeout to prevent hanging
+            response = openai.ChatCompletion.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=1000
             )
             
-            print(f"Response status code: {response.status_code}")
+            print("Got response from OpenAI API")
             
-            if response.status_code == 200:
-                try:
-                    result = response.json()
-                    answer = result["choices"][0]["message"]["content"].strip()
-                    print(f"Got response from OpenAI API (length: {len(answer)})")
-                    return answer
-                except Exception as e:
-                    error_msg = f"Error parsing API response: {str(e)}"
-                    print(error_msg)
-                    print(f"Response content: {response.text}")
-                    return error_msg
-            else:
-                error_msg = f"Error from OpenAI API: {response.status_code} - {response.text}"
-                print(error_msg)
-                return error_msg
+            # Extract the response text
+            answer = response.choices[0].message.content.strip()
+            print(f"Response length: {len(answer)}")
+            return answer
                 
         except Exception as e:
-            error_msg = f"Error with direct API request: {str(e)}"
+            error_msg = f"Error with OpenAI API request: {str(e)}"
             print(error_msg)
             print(traceback.format_exc())
             return error_msg
+    except ImportError as e:
+        error_msg = f"Error importing openai library: {str(e)}. Make sure it's installed with 'pip install openai'."
+        print(error_msg)
+        return error_msg
     except Exception as e:
         error_msg = f"Error calling OpenAI API: {str(e)}"
         print(error_msg)
