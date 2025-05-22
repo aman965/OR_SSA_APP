@@ -2,7 +2,7 @@ import os
 import json
 import sys
 import pandas as pd
-import openai
+import requests
 import streamlit as st
 import traceback
 
@@ -13,7 +13,6 @@ MEDIA_ROOT = os.path.abspath(os.path.join(PARENT_DIR, "media"))
 sys.path.append(FRONTEND_DIR)
 sys.path.append(BASE_DIR)  # Add backend to path for Django imports
 
-from components.openai_utils import init_openai_api, get_gpt_model
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'orsaas_backend.settings')
 import django
