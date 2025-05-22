@@ -70,18 +70,7 @@ def call_chatgpt(prompt):
         print(f"Using model: {model}")
         
         try:
-            client = openai.OpenAI(api_key=st.secrets["openai"]["api_key"])
-            response = client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,
-                max_tokens=1000
-            )
-            answer = response.choices[0].message.content.strip()
-            print(f"Got response from OpenAI API (length: {len(answer)})")
-            return answer
-        except AttributeError:
-            print("Using legacy OpenAI API format")
+            openai.api_key = st.secrets["openai"]["api_key"]
             response = openai.ChatCompletion.create(
                 model=model,
                 messages=[{"role": "user", "content": prompt}],
@@ -89,6 +78,20 @@ def call_chatgpt(prompt):
                 max_tokens=1000
             )
             answer = response.choices[0].message['content'].strip()
+            print(f"Got response from OpenAI API (length: {len(answer)})")
+            return answer
+        except Exception as e:
+            print(f"Error with legacy API format: {str(e)}")
+            print("Trying new OpenAI client format")
+            from openai import OpenAI
+            client = OpenAI(api_key=st.secrets["openai"]["api_key"])
+            response = client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,
+                max_tokens=1000
+            )
+            answer = response.choices[0].message.content.strip()
             print(f"Got response from OpenAI API (length: {len(answer)})")
             return answer
     except Exception as e:
