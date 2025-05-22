@@ -57,12 +57,13 @@ Only return the answer in the required format; do not include extra explanation 
 """
     return prompt
 
-def call_chatgpt(prompt):
+def call_chatgpt(prompt, model=None):
     """
     Call the OpenAI API with the given prompt using the openai library
     
     Args:
         prompt (str): The prompt to send to GPT
+        model (str, optional): Model to use. If None, will use from secrets or default to gpt-4o
         
     Returns:
         str: GPT's response
@@ -72,33 +73,52 @@ def call_chatgpt(prompt):
     try:
         import openai
         
-        try:
-            model = st.secrets["openai"]["model"]
-        except:
-            model = "gpt-4o"  # Default to gpt-4o as per requirements
+        if model is None:
+            try:
+                model = st.secrets["openai"]["model"]
+                print(f"Using model from secrets: {model}")
+            except:
+                model = "gpt-4o"  # Default to gpt-4o as per requirements
+                print(f"Using default model: {model}")
         
         print(f"Using model: {model}")
         
         try:
-            api_key = st.secrets["openai"]["api_key"]
-            if not api_key:
-                return "Error: OpenAI API key not found in secrets"
+            try:
+                api_key = st.secrets["openai"]["api_key"]
+                print("Found API key in secrets")
+            except Exception as e:
+                print(f"Error getting API key from secrets: {str(e)}")
+                return f"Error: OpenAI API key not found in secrets: {str(e)}"
             
+            if not api_key:
+                return "Error: OpenAI API key is empty in secrets"
+            
+            # Set API key for openai library
             openai.api_key = api_key
+            print("Set API key for openai library")
             
             try:
                 from openai import OpenAI
                 print("Using newer OpenAI client (>= 1.0.0)")
                 
                 client = OpenAI(api_key=api_key)
-                response = client.chat.completions.create(
-                    model=model,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=0.1,
-                    max_tokens=1000
-                )
+                print("Created OpenAI client")
                 
+                payload = {
+                    "model": model,
+                    "messages": [{"role": "user", "content": prompt}],
+                    "temperature": 0.1,
+                    "max_tokens": 1000,
+                    "response_format": {"type": "text"}  # Ensure we get plain text back
+                }
+                
+                print(f"Sending request to OpenAI API with payload keys: {list(payload.keys())}")
+                print(f"Messages type: {type(payload['messages'])}")
+                
+                response = client.chat.completions.create(**payload)
                 print("Got response from OpenAI API (new client)")
+                
                 answer = response.choices[0].message.content.strip()
                 print(f"Response length: {len(answer)}")
                 return answer
@@ -109,27 +129,37 @@ def call_chatgpt(prompt):
                 print("Using legacy OpenAI client (< 1.0.0)")
                 
                 if hasattr(openai, 'ChatCompletion'):
-                    response = openai.ChatCompletion.create(
-                        model=model,
-                        messages=[{"role": "user", "content": prompt}],
-                        temperature=0.1,
-                        max_tokens=1000
-                    )
+                    payload = {
+                        "model": model,
+                        "messages": [{"role": "user", "content": prompt}],
+                        "temperature": 0.1,
+                        "max_tokens": 1000
+                    }
                     
+                    print(f"Sending request to OpenAI API with payload keys: {list(payload.keys())}")
+                    print(f"Messages type: {type(payload['messages'])}")
+                    
+                    response = openai.ChatCompletion.create(**payload)
                     print("Got response from OpenAI API (legacy client)")
+                    
                     answer = response.choices[0].message['content'].strip()
                     print(f"Response length: {len(answer)}")
                     return answer
                 else:
                     print("ChatCompletion not available, using Completion API")
-                    response = openai.Completion.create(
-                        engine=model,
-                        prompt=prompt,
-                        temperature=0.1,
-                        max_tokens=1000
-                    )
                     
+                    payload = {
+                        "engine": model,
+                        "prompt": prompt,
+                        "temperature": 0.1,
+                        "max_tokens": 1000
+                    }
+                    
+                    print(f"Sending request to OpenAI API with payload keys: {list(payload.keys())}")
+                    
+                    response = openai.Completion.create(**payload)
                     print("Got response from OpenAI API (Completion API)")
+                    
                     answer = response.choices[0].text.strip()
                     print(f"Response length: {len(answer)}")
                     return answer
@@ -438,6 +468,7 @@ def analyze_output(user_question, scenario_id):
             print("Calling OpenAI API")
             gpt_response = call_chatgpt(prompt)
             print(f"Got GPT response of length: {len(gpt_response)}")
+            print(f"GPT response: {gpt_response[:200]}...")  # Print first 200 chars of response
             
             if gpt_response.startswith("Error"):
                 return {
@@ -448,6 +479,31 @@ def analyze_output(user_question, scenario_id):
             print("Parsing GPT response")
             parsed_response = parse_gpt_response(gpt_response)
             print(f"Parsed response type: {parsed_response.get('type', 'unknown')}")
+            print(f"Parsed response data: {parsed_response.get('data', 'none')}")
+            
+            if not isinstance(parsed_response, dict) or 'type' not in parsed_response or 'data' not in parsed_response:
+                print(f"Invalid parsed response format: {parsed_response}")
+                return {
+                    "type": "error",
+                    "data": f"Invalid response format from GPT: {parsed_response}"
+                }
+            
+            if parsed_response.get('type') == 'chart':
+                chart_data = parsed_response.get('data', {})
+                if not isinstance(chart_data, dict):
+                    print(f"Chart data is not a dictionary: {chart_data}")
+                    return {
+                        "type": "error",
+                        "data": f"Invalid chart data format: {chart_data}"
+                    }
+                
+                required_keys = ['chart_type', 'labels', 'values']
+                for key in required_keys:
+                    if key not in chart_data:
+                        print(f"Chart data missing required key '{key}': {chart_data}")
+                        chart_data[key] = [] if key in ['labels', 'values'] else 'bar'
+                
+                parsed_response['data'] = chart_data
             
             return parsed_response
         except Exception as e:
