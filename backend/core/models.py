@@ -13,10 +13,12 @@ class Dataset(models.Model):
     file_path: str = models.CharField(max_length=1024)
     file_type: str = models.CharField(max_length=50)
 
-    owner: "settings.AUTH_USER_MODEL" = models.ForeignKey(  # type: ignore[name-defined]
+    owner: "settings.AUTH_USER_MODEL" = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="datasets",
+        null=True,
+        blank=True,
     )
 
     created_at: "datetime" = models.DateTimeField(auto_now_add=True)
@@ -49,10 +51,12 @@ class Snapshot(models.Model):
     dataset: Dataset = models.ForeignKey(Dataset, on_delete=models.CASCADE, related_name="snapshots")  # type: ignore[valid-type]
     description = models.TextField(blank=True, null=True)
 
-    owner: "settings.AUTH_USER_MODEL" = models.ForeignKey(  # type: ignore[name-defined]
+    owner: "settings.AUTH_USER_MODEL" = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="snapshots",
+        null=True,
+        blank=True,
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -79,10 +83,12 @@ class Scenario(models.Model):
     reason = models.TextField(blank=True, null=True)
     extra_data = models.JSONField(default=dict, blank=True, null=True)
 
-    owner: "settings.AUTH_USER_MODEL" = models.ForeignKey(  # type: ignore[name-defined]
+    owner: "settings.AUTH_USER_MODEL" = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="scenarios",
+        null=True,
+        blank=True,
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
@@ -106,10 +112,12 @@ class Solution(models.Model):
 
     summary: dict[str, object] | None = models.JSONField(blank=True, null=True)
 
-    owner: "settings.AUTH_USER_MODEL" = models.ForeignKey(  # type: ignore[name-defined]
+    owner: "settings.AUTH_USER_MODEL" = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.CASCADE,
         related_name="solutions",
+        null=True,
+        blank=True,
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
