@@ -209,15 +209,20 @@ try:
     
     st.session_state.global_logs.append(f"Button state check - user_question: '{user_question}', is empty: {not user_question}, loading: {st.session_state.gpt_analysis_loading}")
     
-    button_disabled = False if user_question else True
-    
     with analyze_col2:
-        if st.button("Analyze", key="analyze_button", disabled=button_disabled, use_container_width=True):
-            st.session_state.global_logs.append("Analyze button clicked")
-            with analyze_col1:
-                st.write("Starting analysis...")
-            run_gpt_analysis()
-            st.experimental_rerun()  # Force Streamlit to rerun after analysis completes
+        if st.button("Analyze", key="analyze_button", use_container_width=True):
+            if user_question:
+                st.session_state.global_logs.append("Analyze button clicked")
+                with analyze_col1:
+                    st.write("Starting analysis...")
+                run_gpt_analysis()
+                try:
+                    st.rerun()  # For Streamlit >= 1.27.0
+                except:
+                    pass  # Continue without rerunning if not available
+            else:
+                st.warning("Please enter a question first")
+                st.session_state.global_logs.append("Analyze button clicked but no question entered")
     
     if st.session_state.gpt_analysis_loading:
         with st.spinner("Analyzing solution..."):
@@ -289,4 +294,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state)                                                   
+        st.json(st.session_state)                                                               
