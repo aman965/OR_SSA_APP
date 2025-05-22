@@ -206,8 +206,13 @@ try:
     
     # Submit button for GPT analysis
     analyze_col1, analyze_col2 = st.columns([3, 1])
+    
+    st.session_state.global_logs.append(f"Button state check - user_question: '{user_question}', is empty: {not user_question}, loading: {st.session_state.gpt_analysis_loading}")
+    
+    button_disabled = False if user_question else True
+    
     with analyze_col2:
-        if st.button("Analyze", key="analyze_button", disabled=not user_question or st.session_state.gpt_analysis_loading, use_container_width=True):
+        if st.button("Analyze", key="analyze_button", disabled=button_disabled, use_container_width=True):
             st.session_state.global_logs.append("Analyze button clicked")
             with analyze_col1:
                 st.write("Starting analysis...")
@@ -284,4 +289,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state)                                             
+        st.json(st.session_state)                                                   
