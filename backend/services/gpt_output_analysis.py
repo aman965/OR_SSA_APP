@@ -8,6 +8,7 @@ import streamlit as st
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 PARENT_DIR = os.path.dirname(BASE_DIR)
 FRONTEND_DIR = os.path.join(PARENT_DIR, "frontend")
+MEDIA_ROOT = os.path.abspath(os.path.join(PARENT_DIR, "media"))
 sys.path.append(FRONTEND_DIR)
 
 from components.openai_utils import init_openai_api, get_gpt_model
@@ -116,6 +117,9 @@ def get_input_sample(snapshot_csv_path, n=5):
         list: Sample rows as dictionaries
     """
     try:
+        if not os.path.exists(snapshot_csv_path):
+            return [{"warning": f"Snapshot file not found at {snapshot_csv_path}"}]
+            
         df = pd.read_csv(snapshot_csv_path)
         return df.head(n).to_dict(orient="records")
     except Exception as e:
@@ -132,24 +136,40 @@ def analyze_output(user_question, scenario_id):
     Returns:
         dict: Analysis result with type and data
     """
-    from components.file_utils import load_scenario_config, load_solution_summary
-    from core.models import Scenario
-    
     try:
-        scenario = Scenario.objects.select_related('snapshot').get(id=scenario_id)
-        scenario_config = load_scenario_config(scenario_id)
-        solution_summary = load_solution_summary(scenario_id)
+        from core.models import Scenario
         
-        if not scenario_config or not solution_summary:
+        scenario = Scenario.objects.select_related('snapshot').get(id=scenario_id)
+        
+        scenario_config_path = os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "scenario.json")
+        if os.path.exists(scenario_config_path):
+            with open(scenario_config_path, 'r') as f:
+                scenario_config = json.load(f)
+        else:
             return {
                 "type": "error",
-                "data": "Could not load scenario data or solution summary"
+                "data": "Could not load scenario configuration"
             }
         
-        snapshot_id = scenario.snapshot.id
-        snapshot_csv_path = os.path.join(PARENT_DIR, "media", "snapshots", str(snapshot_id), "snapshot.csv")
+        solution_path = os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "outputs", "solution_summary.json")
+        if not os.path.exists(solution_path):
+            alt_solution_path = os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "solution_summary.json")
+            if os.path.exists(alt_solution_path):
+                solution_path = alt_solution_path
+            else:
+                return {
+                    "type": "error",
+                    "data": "Solution file not found for this scenario"
+                }
         
-        input_sample = get_input_sample(snapshot_csv_path)
+        with open(solution_path, 'r') as f:
+            solution_summary = json.load(f)
+        
+        # Load snapshot CSV file
+        snapshot_id = scenario.snapshot.id
+        snapshot_path = os.path.join(MEDIA_ROOT, "snapshots", f"snapshot__{snapshot_id}", "snapshot.csv")
+        
+        input_sample = get_input_sample(snapshot_path)
         
         prompt = build_gpt_prompt(user_question, scenario_config, solution_summary, input_sample)
         gpt_response = call_chatgpt(prompt)
