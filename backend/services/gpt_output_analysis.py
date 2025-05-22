@@ -115,8 +115,7 @@ def call_chatgpt(prompt: str, model: str = None) -> str:
                 "model": model,
                 "messages": messages,
                 "temperature": 0.1,
-                "max_tokens": 1000,
-                "response_format": {"type": "text"}  # Ensure we get plain text back
+                "max_tokens": 1000
             }
             
             print(f"Payload type: {type(payload)}")
@@ -280,6 +279,12 @@ def parse_gpt_response(response_text: str) -> Dict[str, Any]:
                         "type": "chart",
                         "data": chart_data
                     }
+                
+                print("Dictionary without recognized format, converting to value")
+                return {
+                    "type": "value",
+                    "data": str(parsed)
+                }
             
             if isinstance(parsed, (int, float)):
                 print(f"Detected numeric value from JSON: {parsed}")
@@ -288,7 +293,15 @@ def parse_gpt_response(response_text: str) -> Dict[str, Any]:
                     "data": str(parsed)
                 }
             
-            print("Defaulting to value format")
+            if isinstance(parsed, list) and len(parsed) > 0:
+                if all(isinstance(row, list) for row in parsed):
+                    print("Detected table format from list of lists")
+                    return {
+                        "type": "table",
+                        "data": parsed
+                    }
+            
+            print("Defaulting to value format for JSON structure")
             return {
                 "type": "value",
                 "data": str(parsed)
