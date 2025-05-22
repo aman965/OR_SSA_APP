@@ -52,7 +52,7 @@ Only return the answer in the required format; do not include extra explanation 
 
 def call_chatgpt(prompt):
     """
-    Call the OpenAI API with the given prompt
+    Call the OpenAI API with the given prompt using direct HTTP requests
     
     Args:
         prompt (str): The prompt to send to GPT
@@ -60,7 +60,7 @@ def call_chatgpt(prompt):
     Returns:
         str: GPT's response
     """
-    print("Initializing OpenAI API...")
+    print("Initializing OpenAI API via direct HTTP request...")
     
     try:
         try:
@@ -71,36 +71,45 @@ def call_chatgpt(prompt):
         print(f"Using model: {model}")
         
         try:
-            print("Trying with new OpenAI client...")
-            from openai import OpenAI
+            import requests
             
             api_key = st.secrets["openai"]["api_key"]
-            client = OpenAI(api_key=api_key)
+            headers = {
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {api_key}"
+            }
             
-            response = client.chat.completions.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,
-                max_tokens=1000
+            payload = {
+                "model": model,
+                "messages": [{"role": "user", "content": prompt}],
+                "temperature": 0.1,
+                "max_tokens": 1000
+            }
+            
+            print("Sending direct HTTP request to OpenAI API...")
+            response = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers=headers,
+                json=payload
             )
-            answer = response.choices[0].message.content.strip()
-            print(f"Got response from OpenAI API (length: {len(answer)})")
-            return answer
+            
+            print(f"Response status code: {response.status_code}")
+            
+            if response.status_code == 200:
+                result = response.json()
+                answer = result["choices"][0]["message"]["content"].strip()
+                print(f"Got response from OpenAI API (length: {len(answer)})")
+                return answer
+            else:
+                error_msg = f"Error from OpenAI API: {response.status_code} - {response.text}"
+                print(error_msg)
+                return error_msg
+                
         except Exception as e:
-            print(f"Error with new client format: {str(e)}")
+            error_msg = f"Error with direct API request: {str(e)}"
+            print(error_msg)
             print(traceback.format_exc())
-            
-            print("Falling back to legacy OpenAI format...")
-            openai.api_key = st.secrets["openai"]["api_key"]
-            response = openai.ChatCompletion.create(
-                model=model,
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.1,
-                max_tokens=1000
-            )
-            answer = response.choices[0].message['content'].strip()
-            print(f"Got response from legacy OpenAI API (length: {len(answer)})")
-            return answer
+            return error_msg
     except Exception as e:
         error_msg = f"Error calling OpenAI API: {str(e)}"
         print(error_msg)
