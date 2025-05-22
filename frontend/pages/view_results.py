@@ -254,6 +254,17 @@ try:
                 labels = result_data.get("labels", [])
                 values = result_data.get("values", [])
                 
+                if not isinstance(labels, list):
+                    st.session_state.global_logs.append(f"Converting labels to list: {labels}")
+                    labels = [str(labels)]
+                
+                if not isinstance(values, list):
+                    st.session_state.global_logs.append(f"Converting values to list: {values}")
+                    try:
+                        values = [float(values)]
+                    except (ValueError, TypeError):
+                        values = [0]
+                
                 if not isinstance(labels, list) or not isinstance(values, list):
                     st.warning("Invalid chart data: labels and values must be lists")
                     st.json(result_data)
@@ -345,4 +356,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state)                                                                                             
+        st.json(st.session_state)                                                                                                   

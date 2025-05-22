@@ -207,6 +207,11 @@ def parse_gpt_response(response_text):
                 }
             
             print("Defaulting to value format")
+            if isinstance(parsed, (int, float)) or (isinstance(parsed, str) and parsed.replace('.', '', 1).isdigit()):
+                return {
+                    "type": "value",
+                    "data": str(parsed)
+                }
             return {
                 "type": "value",
                 "data": str(parsed)
@@ -348,9 +353,16 @@ def analyze_output(user_question, scenario_id):
         try:
             if scenario.snapshot:
                 snapshot_id = scenario.snapshot.id
-                snapshot_path = os.path.join(MEDIA_ROOT, "snapshots", f"snapshot__{snapshot_id}", "snapshot.csv")
+                snapshot_dir = os.path.join(MEDIA_ROOT, "snapshots", f"snapshot__{snapshot_id}")
+                snapshot_path = os.path.join(snapshot_dir, "snapshot.csv")
                 print(f"Looking for snapshot CSV at: {snapshot_path}")
                 print(f"Path exists: {os.path.exists(snapshot_path)}")
+                
+                if not os.path.exists(snapshot_path):
+                    alt_snapshot_path = os.path.join(MEDIA_ROOT, "snapshots", str(snapshot_id), "snapshot.csv")
+                    print(f"Primary path not found, trying alternate path: {alt_snapshot_path}")
+                    if os.path.exists(alt_snapshot_path):
+                        snapshot_path = alt_snapshot_path
                 
                 input_sample = get_input_sample(snapshot_path)
                 print(f"Got input sample with {len(input_sample)} rows")
@@ -369,6 +381,12 @@ def analyze_output(user_question, scenario_id):
             print("Calling OpenAI API")
             gpt_response = call_chatgpt(prompt)
             print(f"Got GPT response of length: {len(gpt_response)}")
+            
+            if gpt_response.startswith("Error"):
+                return {
+                    "type": "error",
+                    "data": gpt_response
+                }
             
             print("Parsing GPT response")
             parsed_response = parse_gpt_response(gpt_response)
