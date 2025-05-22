@@ -143,40 +143,47 @@ def parse_gpt_response(response_text):
     
     try:
         cleaned_text = response_text.strip()
-        if cleaned_text.startswith("```json"):
-            cleaned_text = cleaned_text[7:]
-        if cleaned_text.startswith("```"):
-            cleaned_text = cleaned_text[3:]
-        if cleaned_text.endswith("```"):
-            cleaned_text = cleaned_text[:-3]
         
-        cleaned_text = cleaned_text.strip()
+        if "```json" in cleaned_text:
+            parts = cleaned_text.split("```json")
+            if len(parts) > 1:
+                cleaned_text = parts[1].split("```")[0].strip()
+        elif "```" in cleaned_text:
+            parts = cleaned_text.split("```")
+            if len(parts) > 1:
+                cleaned_text = parts[1].strip()
         
-        parsed = json.loads(cleaned_text)
-        
-        if isinstance(parsed, dict) and "table" in parsed:
+        try:
+            parsed = json.loads(cleaned_text)
+            
+            if isinstance(parsed, dict) and "table" in parsed:
+                return {
+                    "type": "table",
+                    "data": parsed["table"]
+                }
+            
+            if isinstance(parsed, dict) and "chart_type" in parsed:
+                return {
+                    "type": "chart",
+                    "data": parsed
+                }
+            
             return {
-                "type": "table",
-                "data": parsed["table"]
+                "type": "value",
+                "data": str(parsed)
             }
-        
-        if isinstance(parsed, dict) and "chart_type" in parsed:
+        except json.JSONDecodeError:
             return {
-                "type": "chart",
-                "data": parsed
+                "type": "value",
+                "data": cleaned_text
             }
+    except Exception as e:
+        print(f"Error parsing GPT response: {str(e)}")
+        print(f"Original response text: {response_text}")
         
         return {
-            "type": "json",
-            "data": parsed
-        }
-    except json.JSONDecodeError as e:
-        print(f"JSON decode error: {str(e)}")
-        print(f"Response text: {response_text}")
-        
-        return {
-            "type": "value",
-            "data": response_text
+            "type": "error",
+            "data": f"Error parsing response: {str(e)}"
         }
 
 def get_input_sample(snapshot_csv_path, n=5):
