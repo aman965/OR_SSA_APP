@@ -18,10 +18,8 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'orsaas_backend.settings')
 django.setup()
 from core.models import Scenario, Snapshot
 from components.right_log_panel import show_right_log_panel
-from components.openai_utils import init_openai_api
 
 sys.path.append(os.path.join(BACKEND_PATH, "services"))
-from gpt_output_analysis import analyze_output
 
 st.set_page_config(page_title="View Results", page_icon="📊", layout="wide")
 
@@ -179,18 +177,10 @@ try:
         st.session_state.gpt_analysis_loading = True
         st.session_state.global_logs.append(f"Starting GPT analysis for scenario {scenario.id} with question: {user_question}")
         try:
-            import sys
-            import os
-            BACKEND_PATH = os.path.abspath(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "backend"))
-            SERVICES_PATH = os.path.join(BACKEND_PATH, "services")
-            sys.path.append(SERVICES_PATH)
-            
-            import importlib
-            import gpt_output_analysis
-            importlib.reload(gpt_output_analysis)
+            from gpt_output_analysis import analyze_output
             
             st.session_state.global_logs.append(f"Calling analyze_output with question: {user_question} and scenario_id: {scenario.id}")
-            result = gpt_output_analysis.analyze_output(user_question, scenario.id)
+            result = analyze_output(user_question, scenario.id)
             st.session_state.global_logs.append(f"Got result from analyze_output: {result}")
             
             st.session_state.gpt_analysis_result = result
@@ -294,4 +284,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state)                                                               
+        st.json(st.session_state)                                                                           
