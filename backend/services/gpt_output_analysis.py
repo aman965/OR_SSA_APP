@@ -115,11 +115,13 @@ def call_chatgpt(prompt: str, model: str = None) -> str:
                 "model": model,
                 "messages": messages,
                 "temperature": 0.1,
-                "max_tokens": 1000
+                "max_tokens": 1000,
+                "response_format": {"type": "text"}  # Ensure we get plain text back
             }
             
             print(f"Payload type: {type(payload)}")
             print(f"Payload keys: {list(payload.keys())}")
+            print(f"Response format: {payload.get('response_format')}")
             
             response = client.chat.completions.create(**payload)
             print("Got response from OpenAI API (new client)")
