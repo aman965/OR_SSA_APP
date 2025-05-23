@@ -100,6 +100,10 @@ def call_chatgpt(prompt: str, model: str = None) -> str:
             return "Error: OpenAI API key is empty in secrets"
         
         try:
+            # Skip the newer client and go straight to legacy client
+            print("Skipping newer OpenAI client, using legacy client directly")
+            raise ImportError("Forcing legacy client usage")
+            
             from openai import OpenAI
             print("Using newer OpenAI client (>= 1.0.0)")
             
