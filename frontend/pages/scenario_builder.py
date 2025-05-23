@@ -8,6 +8,12 @@ import json
 import subprocess
 from datetime import datetime # Added for time tracking
 
+st.set_page_config(page_title="Scenario Builder", page_icon="⚙️", layout="wide")
+
+# Initialize session state for logs if not exists
+if "global_logs" not in st.session_state:
+    st.session_state.global_logs = ["Scenario Builder initialized."]
+
 # Add the backend directory to the Python path for Django ORM access
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BACKEND_PATH = os.path.abspath(os.path.join(BASE_DIR, "../backend"))
@@ -25,15 +31,8 @@ try:
     st.session_state.global_logs.append("Infeasibility explainer service loaded successfully")
 except ImportError:
     INFEASIBILITY_EXPLAINER_AVAILABLE = False
-    if "global_logs" in st.session_state:
-        st.session_state.global_logs.append("Infeasibility explainer service not available")
+    st.session_state.global_logs.append("Infeasibility explainer service not available")
     print("Warning: Infeasibility explainer service not available")
-
-st.set_page_config(page_title="Scenario Builder", page_icon="⚙️", layout="wide")
-
-# Initialize session state for logs if not exists
-if "global_logs" not in st.session_state:
-    st.session_state.global_logs = ["Scenario Builder initialized."]
 if "running_scenario" not in st.session_state:
     st.session_state.running_scenario = None
 # Session state for solve start times, keyed by scenario_id
@@ -181,7 +180,24 @@ def run_model_for_scenario(scenario_id):
                 
                 # Check if model.lp exists and analyze infeasibility
                 model_lp_path = os.path.join(scenario_dir, "model.lp")
-                if INFEASIBILITY_EXPLAINER_AVAILABLE and os.path.exists(model_lp_path) and "infeasible" in scenario.reason.lower():
+                alt_model_lp_path = os.path.join(output_dir, "model.lp")
+                
+                if os.path.exists(model_lp_path):
+                    lp_file_path = model_lp_path
+                elif os.path.exists(alt_model_lp_path):
+                    lp_file_path = alt_model_lp_path
+                    import shutil
+                    shutil.copy2(alt_model_lp_path, model_lp_path)
+                    st.session_state.global_logs.append(f"Copied model.lp from {alt_model_lp_path} to {model_lp_path}")
+                else:
+                    lp_file_path = None
+                    st.session_state.global_logs.append(f"No model.lp file found for scenario {scenario.id}")
+                
+                # Check for infeasibility keywords in the error message
+                infeasibility_keywords = ["infeasible", "no solution", "not solved to optimality", "no feasible solution"]
+                is_infeasible = any(keyword in scenario.reason.lower() for keyword in infeasibility_keywords)
+                
+                if INFEASIBILITY_EXPLAINER_AVAILABLE and lp_file_path and is_infeasible:
                     st.session_state.global_logs.append(f"Analyzing infeasibility for scenario {scenario.id}")
                     with st.spinner("Analyzing infeasibility with ChatGPT..."):
                         try:
@@ -191,6 +207,13 @@ def run_model_for_scenario(scenario_id):
                                 if os.path.exists(explanation_path):
                                     st.session_state.global_logs.append(f"Infeasibility analysis saved to {explanation_path}")
                                     st.info("✅ Infeasibility analyzed with ChatGPT. See details in the 'Show Details' section.")
+                                    
+                                    # Update the scenario reason with the GPT explanation
+                                    reason = analysis_result.get("reason", "")
+                                    suggestion = analysis_result.get("suggestion", "")
+                                    if reason and suggestion:
+                                        scenario.reason = f"Model not solved to optimality. {reason} Suggestion: {suggestion}"
+                                        scenario.save()
                             else:
                                 st.session_state.global_logs.append(f"Infeasibility analysis failed: {analysis_result.get('error', 'Unknown error')}")
                         except Exception as e:
@@ -210,7 +233,24 @@ def run_model_for_scenario(scenario_id):
                 
                 # Check if model.lp exists and analyze infeasibility
                 model_lp_path = os.path.join(scenario_dir, "model.lp")
-                if INFEASIBILITY_EXPLAINER_AVAILABLE and os.path.exists(model_lp_path) and "infeasible" in scenario.reason.lower():
+                alt_model_lp_path = os.path.join(output_dir, "model.lp")
+                
+                if os.path.exists(model_lp_path):
+                    lp_file_path = model_lp_path
+                elif os.path.exists(alt_model_lp_path):
+                    lp_file_path = alt_model_lp_path
+                    import shutil
+                    shutil.copy2(alt_model_lp_path, model_lp_path)
+                    st.session_state.global_logs.append(f"Copied model.lp from {alt_model_lp_path} to {model_lp_path}")
+                else:
+                    lp_file_path = None
+                    st.session_state.global_logs.append(f"No model.lp file found for scenario {scenario.id}")
+                
+                # Check for infeasibility keywords in the error message
+                infeasibility_keywords = ["infeasible", "no solution", "not solved to optimality", "no feasible solution"]
+                is_infeasible = any(keyword in scenario.reason.lower() for keyword in infeasibility_keywords)
+                
+                if INFEASIBILITY_EXPLAINER_AVAILABLE and lp_file_path and is_infeasible:
                     st.session_state.global_logs.append(f"Analyzing infeasibility for scenario {scenario.id}")
                     with st.spinner("Analyzing infeasibility with ChatGPT..."):
                         try:
@@ -220,6 +260,13 @@ def run_model_for_scenario(scenario_id):
                                 if os.path.exists(explanation_path):
                                     st.session_state.global_logs.append(f"Infeasibility analysis saved to {explanation_path}")
                                     st.info("✅ Infeasibility analyzed with ChatGPT. See details in the 'Show Details' section.")
+                                    
+                                    # Update the scenario reason with the GPT explanation
+                                    reason = analysis_result.get("reason", "")
+                                    suggestion = analysis_result.get("suggestion", "")
+                                    if reason and suggestion:
+                                        scenario.reason = f"Model not solved to optimality. {reason} Suggestion: {suggestion}"
+                                        scenario.save()
                             else:
                                 st.session_state.global_logs.append(f"Infeasibility analysis failed: {analysis_result.get('error', 'Unknown error')}")
                         except Exception as e:
@@ -529,4 +576,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False, key="scenario_builder_debug"):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state)                                                                                                                                                                                                                                                                                        
+        st.json(st.session_state)                                                                                                                                                                                                                                                                                                                                                                        
