@@ -18,10 +18,8 @@ os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'orsaas_backend.settings')
 django.setup()
 from core.models import Scenario, Snapshot
 from components.right_log_panel import show_right_log_panel
-from components.openai_utils import init_openai_api
 
 sys.path.append(os.path.join(BACKEND_PATH, "services"))
-from gpt_output_analysis import analyze_output
 
 st.set_page_config(page_title="View Results", page_icon="📊", layout="wide")
 
@@ -177,12 +175,55 @@ try:
     # Function to run GPT analysis
     def run_gpt_analysis():
         st.session_state.gpt_analysis_loading = True
-        st.session_state.gpt_analysis_result = analyze_output(user_question, scenario.id)
+        st.session_state.global_logs.append(f"Starting GPT analysis for scenario {scenario.id} with question: {user_question}")
+        try:
+            sys.path.append(os.path.join(BACKEND_PATH, "services"))
+            try:
+                from gpt_output_analysis_new import analyze_output
+                st.session_state.global_logs.append(f"Using new gpt_output_analysis_new module")
+            except ImportError:
+                # Fall back to the old implementation if the new one isn't available
+                from gpt_output_analysis import analyze_output
+                st.session_state.global_logs.append(f"Using original gpt_output_analysis module")
+            
+            st.session_state.global_logs.append(f"Calling analyze_output with question: {user_question} and scenario_id: {scenario.id}")
+            result = analyze_output(user_question, scenario.id)
+            st.session_state.global_logs.append(f"Got result from analyze_output: {result}")
+            
+            if not isinstance(result, dict) or 'type' not in result or 'data' not in result:
+                st.session_state.global_logs.append(f"Invalid result format: {result}")
+                result = {"type": "error", "data": "Invalid response format from analysis service"}
+            
+            st.session_state.gpt_analysis_result = result
+            st.session_state.global_logs.append(f"GPT analysis completed with result type: {st.session_state.gpt_analysis_result.get('type', 'unknown')}")
+        except Exception as e:
+            import traceback
+            error_details = traceback.format_exc()
+            st.session_state.global_logs.append(f"Error in GPT analysis: {str(e)}")
+            st.session_state.global_logs.append(f"Error details: {error_details}")
+            st.session_state.gpt_analysis_result = {"type": "error", "data": f"Error: {str(e)}"}
+        
         st.session_state.gpt_analysis_loading = False
     
     # Submit button for GPT analysis
-    if st.button("Analyze", key="analyze_button", disabled=not user_question or st.session_state.gpt_analysis_loading):
-        run_gpt_analysis()
+    analyze_col1, analyze_col2 = st.columns([3, 1])
+    
+    st.session_state.global_logs.append(f"Button state check - user_question: '{user_question}', is empty: {not user_question}, loading: {st.session_state.gpt_analysis_loading}")
+    
+    with analyze_col2:
+        if st.button("Analyze", key="analyze_button", use_container_width=True):
+            if user_question:
+                st.session_state.global_logs.append("Analyze button clicked")
+                with analyze_col1:
+                    st.write("Starting analysis...")
+                run_gpt_analysis()
+                try:
+                    st.rerun()  # For Streamlit >= 1.27.0
+                except:
+                    pass  # Continue without rerunning if not available
+            else:
+                st.warning("Please enter a question first")
+                st.session_state.global_logs.append("Analyze button clicked but no question entered")
     
     if st.session_state.gpt_analysis_loading:
         with st.spinner("Analyzing solution..."):
@@ -211,24 +252,93 @@ try:
                 st.json(result_data)
         elif result_type == "chart":
             try:
-                chart_type = result_data.get("chart_type", "")
+                st.session_state.global_logs.append(f"Chart data: {result_data}")
+                
+                chart_type = result_data.get("chart_type", "bar")
+                title = result_data.get("title", "Chart")
+                
                 labels = result_data.get("labels", [])
                 values = result_data.get("values", [])
                 
-                if chart_type == "bar":
-                    fig = px.bar(x=labels, y=values, title=result_data.get("title", "Chart"))
-                    st.plotly_chart(fig, use_container_width=True)
-                elif chart_type == "line":
-                    fig = px.line(x=labels, y=values, title=result_data.get("title", "Chart"))
-                    st.plotly_chart(fig, use_container_width=True)
-                elif chart_type == "pie":
-                    fig = px.pie(names=labels, values=values, title=result_data.get("title", "Chart"))
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.warning(f"Unsupported chart type: {chart_type}")
+                if not isinstance(labels, list):
+                    st.session_state.global_logs.append(f"Converting labels to list: {labels}")
+                    labels = [str(labels)]
+                
+                if not isinstance(values, list):
+                    st.session_state.global_logs.append(f"Converting values to list: {values}")
+                    try:
+                        values = [float(values)]
+                    except (ValueError, TypeError):
+                        values = [0]
+                
+                if not isinstance(labels, list) or not isinstance(values, list):
+                    st.warning("Invalid chart data: labels and values must be lists")
                     st.json(result_data)
+                    st.session_state.global_logs.append(f"Invalid chart data: labels={type(labels)}, values={type(values)}")
+                elif len(labels) == 0 or len(values) == 0:
+                    st.warning("Empty chart data: labels or values are empty")
+                    st.json(result_data)
+                    st.session_state.global_logs.append(f"Empty chart data: labels={len(labels)}, values={len(values)}")
+                elif len(labels) != len(values):
+                    st.warning(f"Mismatched chart data: labels ({len(labels)}) and values ({len(values)}) must have the same length")
+                    if len(labels) < len(values):
+                        labels.extend([f"Item {i+1}" for i in range(len(labels), len(values))])
+                    else:
+                        values.extend([0] * (len(labels) - len(values)))
+                    st.session_state.global_logs.append(f"Padded chart data: labels={len(labels)}, values={len(values)}")
+                
+                data = {"labels": labels, "values": values}
+                st.session_state.global_logs.append(f"Creating DataFrame with data: {data}")
+                
+                chart_df = pd.DataFrame(data)
+                st.session_state.global_logs.append(f"Created DataFrame with shape {chart_df.shape}")
+                
+                try:
+                    if chart_type == "bar":
+                        fig = px.bar(
+                            data_frame=chart_df,
+                            x="labels",
+                            y="values",
+                            title=title,
+                            labels={"labels": "Category", "values": "Value"}
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    elif chart_type == "line":
+                        fig = px.line(
+                            data_frame=chart_df,
+                            x="labels",
+                            y="values",
+                            title=title,
+                            labels={"labels": "Category", "values": "Value"}
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    elif chart_type == "pie":
+                        fig = px.pie(
+                            data_frame=chart_df,
+                            names="labels",
+                            values="values",
+                            title=title
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                    else:
+                        st.warning(f"Unsupported chart type '{chart_type}', falling back to bar chart")
+                        fig = px.bar(
+                            data_frame=chart_df,
+                            x="labels",
+                            y="values",
+                            title=f"{title} (Fallback Bar Chart)",
+                            labels={"labels": "Category", "values": "Value"}
+                        )
+                        st.plotly_chart(fig, use_container_width=True)
+                except Exception as e:
+                    st.error(f"Error creating chart: {str(e)}")
+                    st.session_state.global_logs.append(f"Error creating chart: {str(e)}")
+                    st.dataframe(chart_df)
             except Exception as e:
-                st.error(f"Error displaying chart: {str(e)}")
+                st.error(f"Error processing chart data: {str(e)}")
+                st.session_state.global_logs.append(f"Error processing chart data: {str(e)}")
+                import traceback
+                st.session_state.global_logs.append(traceback.format_exc())
                 st.json(result_data)
         else:
             st.json(result_data)
@@ -254,4 +364,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state)                     
+        st.json(st.session_state)                                                                                                                     

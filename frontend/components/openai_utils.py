@@ -5,9 +5,13 @@ def init_openai_api():
     """Initialize the OpenAI API with the key from Streamlit secrets"""
     try:
         openai.api_key = st.secrets["openai"]["api_key"]
+        openai.proxies = None
+        print(f"OpenAI API initialized successfully with key starting with: {openai.api_key[:5]}...")
         return True
     except Exception as e:
-        st.error(f"Failed to initialize OpenAI API: {e}")
+        error_msg = f"Failed to initialize OpenAI API: {e}"
+        print(error_msg)
+        st.error(error_msg)
         return False
 
 def get_gpt_model():

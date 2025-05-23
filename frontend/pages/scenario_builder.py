@@ -397,6 +397,9 @@ else:
         placeholder_run = list_cols_row[6].empty()
         is_this_scenario_running = (st.session_state.running_scenario == scenario_item.id)
 
+        button_container = placeholder_run.container()
+        col1, col2 = button_container.columns(2)
+        
         run_button_disabled = scenario_item.status == "solving" or is_this_scenario_running
         button_text = "▶️ Run Model"
         button_help = "Run optimization model for this scenario"
@@ -407,8 +410,14 @@ else:
             button_text = "🔄 Queued/Solving..."
             button_help = "This scenario is being processed (possibly by another session or a previous run)."
         
-        if placeholder_run.button(button_text, key=f"run_{scenario_item.id}", help=button_help, disabled=run_button_disabled):
+        if col1.button(button_text, key=f"run_{scenario_item.id}", help=button_help, disabled=run_button_disabled):
             run_model_for_scenario(scenario_item.id)
+            
+        if scenario_item.status == "solved":
+            if col2.button("📊 View Results", key=f"view_{scenario_item.id}", help="View the results of this scenario"):
+                st.session_state["selected_snapshot_for_results"] = scenario_item.snapshot.name
+                st.session_state["selected_scenario_for_results"] = scenario_item.name
+                st.switch_page("pages/view_results.py")
 
         with list_cols_row[7].expander("Show Details"):
             st.caption(f"ID: {scenario_item.id}")
@@ -433,4 +442,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False, key="scenario_builder_debug"):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state)                                        
+        st.json(st.session_state)                                                                                
