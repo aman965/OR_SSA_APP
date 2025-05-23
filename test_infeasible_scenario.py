@@ -31,13 +31,13 @@ print(f"Created test VRP data at {test_vrp_file}")
 try:
     upload = Upload.objects.filter(name="test_infeasible_upload").first()
     if not upload:
-        upload = Upload.objects.create(
-            name="test_infeasible_upload",
-            file=test_vrp_file,
-            file_type="csv",
-            rows=5,
-            columns=7
-        )
+        from django.core.files import File
+        with open(test_vrp_file, 'rb') as f:
+            django_file = File(f)
+            upload = Upload.objects.create(
+                name="test_infeasible_upload",
+                file=django_file
+            )
         print(f"Created test upload: {upload.name} (ID: {upload.id})")
     else:
         print(f"Using existing upload: {upload.name} (ID: {upload.id})")
