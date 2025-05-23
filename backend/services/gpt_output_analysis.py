@@ -103,8 +103,8 @@ def call_chatgpt(prompt: str, model: str = None) -> str:
             from openai import OpenAI
             print("Using newer OpenAI client (>= 1.0.0)")
             
-            client = OpenAI(api_key=api_key)
-            print("Created OpenAI client")
+            client = OpenAI(api_key=api_key, proxies=None)
+            print("Created OpenAI client with explicit proxies=None")
             
             # Create messages as a list of dictionaries
             messages = [{"role": "user", "content": prompt}]
