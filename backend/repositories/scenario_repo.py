@@ -1,4 +1,4 @@
-"""Repository adapter for the :class:`~backend.core.models.Scenario` model.
+"""Repository adapter for the :class:`~core.models.Scenario` model.
 
 This tiny layer abstracts away the underlying Django ORM, giving the rest of
 our code-base a stable, test-friendly surface that can later be swapped out or
@@ -11,7 +11,7 @@ from typing import Final
 
 from django.db import transaction
 
-from backend.core.models import Scenario
+from core.models import Scenario
 
 __all__: Final = ["ScenarioRepo"]
 

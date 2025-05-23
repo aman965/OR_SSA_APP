@@ -8,15 +8,6 @@ root_dir = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(root_dir))
 
 import streamlit as st
-from backend.db_utils import init_db
-
-# Initialize database
-try:
-    init_db()
-    st.sidebar.success("✅ Database initialized successfully")
-except Exception as e:
-    st.sidebar.error("❌ Database initialization failed")
-    st.sidebar.exception(e)
 
 try:
     st.sidebar.markdown("### 🛠 Diagnostic Info")

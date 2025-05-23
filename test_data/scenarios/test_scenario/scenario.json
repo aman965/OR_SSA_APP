@@ -1,0 +1,13 @@
+{
+    "name": "Test Scenario",
+    "dataset_file_path": "D:\\Piyush\\Nirnay\\OR_SSA_APP\\test_data\\snapshots\\test_snapshot\\snapshot.csv",
+    "params": {
+        "param1": 100.0,
+        "param2": 1,
+        "param3": 50,
+        "param4": false,
+        "param5": false
+    },
+    "gpt_prompt": "",
+    "gpt_response": ""
+}

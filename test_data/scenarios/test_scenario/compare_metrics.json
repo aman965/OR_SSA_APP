@@ -1,0 +1,20 @@
+{
+    "scenario_id": "test_scenario",
+    "snapshot_id": "",
+    "parameters": {
+        "param1": 100.0,
+        "param2": 1,
+        "param3": 50,
+        "param4": false,
+        "param5": false
+    },
+    "kpis": {
+        "total_distance": 28.284271247461902,
+        "total_routes": 1,
+        "avg_route_distance": 28.28,
+        "customers_served": 1,
+        "max_route_length": 1,
+        "avg_utilization": 1.0
+    },
+    "status": "solved"
+}

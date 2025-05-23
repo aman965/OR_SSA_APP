@@ -78,4 +78,13 @@ def add_constraint_prompt(scenario_id: str, prompt: str) -> dict | None:
         return response.json()
     else:
         st.error(f"Failed to add constraint: {response.status_code}")
-        return None 
+        return None
+
+def get_datasets():
+    """Fetch all datasets from the API"""
+    response = requests.get(f"{API_BASE_URL}/datasets/")
+    if response.status_code == 200:
+        return response.json()
+    else:
+        st.error(f"Failed to fetch datasets: {response.status_code}")
+        return [] 

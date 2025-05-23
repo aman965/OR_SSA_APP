@@ -75,7 +75,7 @@ def run_model_for_scenario(scenario_id):
                 "param5": scenario.param5,
             },
             "gpt_prompt": scenario.gpt_prompt,
-            "dataset_file_path": os.path.join(MEDIA_ROOT, scenario.snapshot.linked_upload.file.name)
+            "dataset_file_path": os.path.join(MEDIA_ROOT, scenario.snapshot.dataset.file.name)
         }
         scenario_json_path = os.path.join(scenario_dir, "scenario.json")
         with open(scenario_json_path, 'w') as f:
@@ -365,7 +365,7 @@ with col_filter2:
         key="filter_status"
     )
 
-scenarios_qs_display = Scenario.objects.select_related('snapshot', 'snapshot__linked_upload').order_by("-created_at") # Renamed for clarity
+scenarios_qs_display = Scenario.objects.select_related('snapshot__dataset').order_by("-created_at") # Renamed for clarity
 
 if filter_snapshot_name != "All Snapshots":
     scenarios_qs_display = scenarios_qs_display.filter(snapshot__name=filter_snapshot_name)
