@@ -141,7 +141,8 @@ def call_chatgpt(prompt: str, model: str = None) -> str:
             
             # Set API key for legacy client
             openai.api_key = api_key
-            print("Set API key for legacy openai library")
+            openai.proxies = None
+            print("Set API key and proxies=None for legacy openai library")
             
             if hasattr(openai, 'ChatCompletion'):
                 # Create messages as a list of dictionaries
