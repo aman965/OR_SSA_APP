@@ -178,7 +178,13 @@ try:
         st.session_state.global_logs.append(f"Starting GPT analysis for scenario {scenario.id} with question: {user_question}")
         try:
             sys.path.append(os.path.join(BACKEND_PATH, "services"))
-            from gpt_output_analysis import analyze_output
+            try:
+                from gpt_output_analysis_new import analyze_output
+                st.session_state.global_logs.append(f"Using new gpt_output_analysis_new module")
+            except ImportError:
+                # Fall back to the old implementation if the new one isn't available
+                from gpt_output_analysis import analyze_output
+                st.session_state.global_logs.append(f"Using original gpt_output_analysis module")
             
             st.session_state.global_logs.append(f"Calling analyze_output with question: {user_question} and scenario_id: {scenario.id}")
             result = analyze_output(user_question, scenario.id)
@@ -358,4 +364,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state)                                                                                                               
+        st.json(st.session_state)                                                                                                                     
