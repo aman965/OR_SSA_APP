@@ -8,6 +8,12 @@ import json
 import subprocess
 from datetime import datetime # Added for time tracking
 
+st.set_page_config(page_title="Scenario Builder", page_icon="⚙️", layout="wide")
+
+# Initialize session state for logs if not exists
+if "global_logs" not in st.session_state:
+    st.session_state.global_logs = ["Scenario Builder initialized."]
+
 # Add the backend directory to the Python path for Django ORM access
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 BACKEND_PATH = os.path.abspath(os.path.join(BASE_DIR, "../backend"))
@@ -19,11 +25,14 @@ django.setup()
 from core.models import Snapshot, Scenario
 from components.right_log_panel import show_right_log_panel
 
-st.set_page_config(page_title="Scenario Builder", page_icon="⚙️", layout="wide")
-
-# Initialize session state for logs if not exists
-if "global_logs" not in st.session_state:
-    st.session_state.global_logs = ["Scenario Builder initialized."]
+try:
+    from services.gpt_services.infeasibility_explainer import analyze_infeasibility
+    INFEASIBILITY_EXPLAINER_AVAILABLE = True
+    st.session_state.global_logs.append("Infeasibility explainer service loaded successfully")
+except ImportError:
+    INFEASIBILITY_EXPLAINER_AVAILABLE = False
+    st.session_state.global_logs.append("Infeasibility explainer service not available")
+    print("Warning: Infeasibility explainer service not available")
 if "running_scenario" not in st.session_state:
     st.session_state.running_scenario = None
 # Session state for solve start times, keyed by scenario_id
@@ -199,6 +208,47 @@ def run_model_for_scenario(scenario_id):
                 progress_bar.empty()
                 st.error(f"Model for scenario '{scenario.name}' failed. Reason: {scenario.reason}")
                 st.session_state.global_logs.append(f"Scenario {scenario.id} failed. Reason: {scenario.reason}")
+                
+                # Check if model.lp exists and analyze infeasibility
+                model_lp_path = os.path.join(scenario_dir, "model.lp")
+                alt_model_lp_path = os.path.join(output_dir, "model.lp")
+                
+                if os.path.exists(model_lp_path):
+                    lp_file_path = model_lp_path
+                elif os.path.exists(alt_model_lp_path):
+                    lp_file_path = alt_model_lp_path
+                    import shutil
+                    shutil.copy2(alt_model_lp_path, model_lp_path)
+                    st.session_state.global_logs.append(f"Copied model.lp from {alt_model_lp_path} to {model_lp_path}")
+                else:
+                    lp_file_path = None
+                    st.session_state.global_logs.append(f"No model.lp file found for scenario {scenario.id}")
+                
+                # Check for infeasibility keywords in the error message
+                infeasibility_keywords = ["infeasible", "no solution", "not solved to optimality", "no feasible solution"]
+                is_infeasible = any(keyword in scenario.reason.lower() for keyword in infeasibility_keywords)
+                
+                if INFEASIBILITY_EXPLAINER_AVAILABLE and lp_file_path and is_infeasible:
+                    st.session_state.global_logs.append(f"Analyzing infeasibility for scenario {scenario.id}")
+                    with st.spinner("Analyzing infeasibility with ChatGPT..."):
+                        try:
+                            analysis_result = analyze_infeasibility(scenario.id)
+                            if analysis_result.get("success", False):
+                                explanation_path = os.path.join(scenario_dir, "gpt_error_explanation.txt")
+                                if os.path.exists(explanation_path):
+                                    st.session_state.global_logs.append(f"Infeasibility analysis saved to {explanation_path}")
+                                    st.info("✅ Infeasibility analyzed with ChatGPT. See details in the 'Show Details' section.")
+                                    
+                                    # Update the scenario reason with the GPT explanation
+                                    reason = analysis_result.get("reason", "")
+                                    suggestion = analysis_result.get("suggestion", "")
+                                    if reason and suggestion:
+                                        scenario.reason = f"Model not solved to optimality. {reason} Suggestion: {suggestion}"
+                                        scenario.save()
+                            else:
+                                st.session_state.global_logs.append(f"Infeasibility analysis failed: {analysis_result.get('error', 'Unknown error')}")
+                        except Exception as e:
+                            st.session_state.global_logs.append(f"Error analyzing infeasibility: {str(e)}")
             elif os.path.exists(alt_failure_path):
                 import shutil
                 shutil.copy2(alt_failure_path, failure_path)
@@ -211,6 +261,47 @@ def run_model_for_scenario(scenario_id):
                 progress_bar.empty()
                 st.error(f"Model for scenario '{scenario.name}' failed. Reason: {scenario.reason}")
                 st.session_state.global_logs.append(f"Scenario {scenario.id} failed. Reason: {scenario.reason}")
+                
+                # Check if model.lp exists and analyze infeasibility
+                model_lp_path = os.path.join(scenario_dir, "model.lp")
+                alt_model_lp_path = os.path.join(output_dir, "model.lp")
+                
+                if os.path.exists(model_lp_path):
+                    lp_file_path = model_lp_path
+                elif os.path.exists(alt_model_lp_path):
+                    lp_file_path = alt_model_lp_path
+                    import shutil
+                    shutil.copy2(alt_model_lp_path, model_lp_path)
+                    st.session_state.global_logs.append(f"Copied model.lp from {alt_model_lp_path} to {model_lp_path}")
+                else:
+                    lp_file_path = None
+                    st.session_state.global_logs.append(f"No model.lp file found for scenario {scenario.id}")
+                
+                # Check for infeasibility keywords in the error message
+                infeasibility_keywords = ["infeasible", "no solution", "not solved to optimality", "no feasible solution"]
+                is_infeasible = any(keyword in scenario.reason.lower() for keyword in infeasibility_keywords)
+                
+                if INFEASIBILITY_EXPLAINER_AVAILABLE and lp_file_path and is_infeasible:
+                    st.session_state.global_logs.append(f"Analyzing infeasibility for scenario {scenario.id}")
+                    with st.spinner("Analyzing infeasibility with ChatGPT..."):
+                        try:
+                            analysis_result = analyze_infeasibility(scenario.id)
+                            if analysis_result.get("success", False):
+                                explanation_path = os.path.join(scenario_dir, "gpt_error_explanation.txt")
+                                if os.path.exists(explanation_path):
+                                    st.session_state.global_logs.append(f"Infeasibility analysis saved to {explanation_path}")
+                                    st.info("✅ Infeasibility analyzed with ChatGPT. See details in the 'Show Details' section.")
+                                    
+                                    # Update the scenario reason with the GPT explanation
+                                    reason = analysis_result.get("reason", "")
+                                    suggestion = analysis_result.get("suggestion", "")
+                                    if reason and suggestion:
+                                        scenario.reason = f"Model not solved to optimality. {reason} Suggestion: {suggestion}"
+                                        scenario.save()
+                            else:
+                                st.session_state.global_logs.append(f"Infeasibility analysis failed: {analysis_result.get('error', 'Unknown error')}")
+                        except Exception as e:
+                            st.session_state.global_logs.append(f"Error analyzing infeasibility: {str(e)}")
             else:
                 # Check for model.lp file in scenario directory
                 model_lp_path = os.path.join(scenario_dir, "model.lp")
@@ -247,6 +338,23 @@ def run_model_for_scenario(scenario_id):
             if not os.path.exists(failure_path):
                 with open(failure_path, 'w') as f:
                     json.dump({"status": "error", "message": error_msg}, f, indent=4)
+            
+            # Check if model.lp exists and analyze infeasibility
+            model_lp_path = os.path.join(scenario_dir, "model.lp")
+            if INFEASIBILITY_EXPLAINER_AVAILABLE and os.path.exists(model_lp_path) and "infeasible" in error_msg.lower():
+                st.session_state.global_logs.append(f"Analyzing infeasibility for scenario {scenario.id}")
+                with st.spinner("Analyzing infeasibility with ChatGPT..."):
+                    try:
+                        analysis_result = analyze_infeasibility(scenario.id)
+                        if analysis_result.get("success", False):
+                            explanation_path = os.path.join(scenario_dir, "gpt_error_explanation.txt")
+                            if os.path.exists(explanation_path):
+                                st.session_state.global_logs.append(f"Infeasibility analysis saved to {explanation_path}")
+                                st.info("✅ Infeasibility analyzed with ChatGPT. See details in the 'Show Details' section.")
+                        else:
+                            st.session_state.global_logs.append(f"Infeasibility analysis failed: {analysis_result.get('error', 'Unknown error')}")
+                    except Exception as e:
+                        st.session_state.global_logs.append(f"Error analyzing infeasibility: {str(e)}")
         except Exception as e:
             scenario.status = "failed"
             scenario.reason = f"Error running solver: {str(e)}"
@@ -456,10 +564,36 @@ else:
             st.caption(f"P4 (Toggle): {scenario_item.param4}, P5 (Checkbox): {scenario_item.param5}")
             if scenario_item.gpt_prompt:
                 st.caption(f"GPT Tweak: {scenario_item.gpt_prompt[:50]}...")
-            if scenario_item.reason:
-                 st.caption(f"Failure Reason: {scenario_item.reason}")
             
-            scenario_media_dir_item = os.path.join(MEDIA_ROOT, "scenarios", str(scenario_item.id)) # Renamed
+            if scenario_item.reason:
+                st.caption(f"Failure Reason: {scenario_item.reason}")
+                
+                # Check for GPT explanation
+                explanation_path = os.path.join(MEDIA_ROOT, "scenarios", str(scenario_item.id), "gpt_error_explanation.txt")
+                if os.path.exists(explanation_path):
+                    try:
+                        with open(explanation_path, 'r') as f:
+                            explanation_text = f.read()
+                        
+                        if "REASON:" in explanation_text and "SUGGESTION:" in explanation_text:
+                            parts = explanation_text.split("SUGGESTION:")
+                            reason = parts[0].replace("REASON:", "").strip()
+                            suggestion = parts[1].strip()
+                            
+                            st.markdown("### ChatGPT Analysis")
+                            st.markdown("**Why the model is infeasible:**")
+                            st.info(reason)
+                            st.markdown("**Suggested fix:**")
+                            st.success(suggestion)
+                        else:
+                            # Fallback if format is not as expected
+                            st.markdown("### ChatGPT Analysis")
+                            st.info(explanation_text)
+                    except Exception as e:
+                        st.error(f"Error reading explanation: {str(e)}")
+            
+            # List files in scenario directory
+            scenario_media_dir_item = os.path.join(MEDIA_ROOT, "scenarios", str(scenario_item.id))
             if os.path.exists(scenario_media_dir_item):
                 st.caption("Files:")
                 for f_name in os.listdir(scenario_media_dir_item):
@@ -473,4 +607,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False, key="scenario_builder_debug"):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state) 
+        st.json(st.session_state)
