@@ -61,4 +61,23 @@ db.sqlite3-journal
 Thumbs.db
 
 # New entries
-.venv/ 
+.venv/
+
+# Temporary and test files (prevent future accumulation)
+test_*.py
+debug_*.py
+temp_*.py
+*_test.py
+*_debug.py
+*_temp.py
+demo_*.py
+simple_test.py
+test_app.py
+test_integration.py
+test_real_data.py
+
+# Backup files
+*.bak
+*_backup.*
+*_old.*
+main_fixed.py 

@@ -81,15 +81,46 @@ def run_model_for_scenario(scenario_id):
         progress_bar = st.progress(0, text="Model solving in progress...")
         start_time_for_loop = st.session_state[f"scenario_solve_start_time_{scenario_id}"]
 
-        # Run the VRP solver as a subprocess
+        # Run the ENHANCED VRP solver with intelligent constraint parsing
         try:
-            solver_path = os.path.join(BACKEND_PATH, "solver", "vrp_solver.py")
+            solver_path = os.path.join(BACKEND_PATH, "solver", "vrp_solver_enhanced.py")
+            
+            # Fallback to original solver if enhanced version not available
+            if not os.path.exists(solver_path):
+                solver_path = os.path.join(BACKEND_PATH, "solver", "vrp_solver.py")
+                st.session_state.global_logs.append("Using standard VRP solver (enhanced solver not found)")
+            else:
+                st.session_state.global_logs.append("Using enhanced VRP solver with intelligent constraint parsing")
+            
+            # Prepare environment variables, including OpenAI API key if available
+            env = os.environ.copy()
+            
+            # Try to get OpenAI API key from Streamlit secrets
+            try:
+                if hasattr(st, 'secrets') and 'OPENAI_API_KEY' in st.secrets:
+                    api_key = st.secrets['OPENAI_API_KEY']
+                    env['OPENAI_API_KEY'] = api_key
+                    st.session_state.global_logs.append(f"OpenAI API key passed to enhanced solver (length: {len(api_key)})")
+                else:
+                    st.session_state.global_logs.append("No OpenAI API key found in secrets - solver will use fallback parsing")
+                    st.session_state.global_logs.append(f"Debug: hasattr(st, 'secrets'): {hasattr(st, 'secrets')}")
+                    if hasattr(st, 'secrets'):
+                        st.session_state.global_logs.append(f"Debug: Available secrets keys: {list(st.secrets.keys())}")
+            except Exception as e:
+                st.session_state.global_logs.append(f"Could not access OpenAI API key: {e}")
+            
+            # Debug: Log what's actually in the environment
+            st.session_state.global_logs.append(f"Debug: OPENAI_API_KEY in env: {'OPENAI_API_KEY' in env}")
+            if 'OPENAI_API_KEY' in env:
+                st.session_state.global_logs.append(f"Debug: OPENAI_API_KEY length: {len(env['OPENAI_API_KEY'])}")
+            
             result = subprocess.run(
                 [sys.executable, solver_path, "--scenario-path", scenario_json_path],
                 check=True,
                 capture_output=True,
                 text=True,
-                timeout=180  # Add timeout to prevent infinite runs
+                timeout=180,  # Add timeout to prevent infinite runs
+                env=env  # Pass environment variables including OpenAI API key
             )
             st.session_state.global_logs.append(f"VRP solver output: {result.stdout}")
             
@@ -442,4 +473,4 @@ show_right_log_panel(st.session_state.global_logs)
 if st.sidebar.checkbox("Show Debug Info", value=False, key="scenario_builder_debug"):
     with st.expander("🔍 Debug Panel", expanded=True):
         st.markdown("### Session State")
-        st.json(st.session_state)                                                                                
+        st.json(st.session_state) 

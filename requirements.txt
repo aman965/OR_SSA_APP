@@ -1,14 +1,41 @@
+# Core dependencies
 Django==5.2.1
 streamlit==1.45.0
 python-dotenv==1.1.0
 pandas==2.2.3
-plotly==6.0.1
 django-cors-headers==4.7.0
 djangorestframework==3.16.0
-numpy==2.2.5
 pillow==11.2.1
-requests==2.32.3
-openpyxl==3.1.5
 SQLAlchemy==1.4.51
-PuLP==2.7.0
-openai==1.12.0
+
+# Optimization solvers
+pulp>=2.7.0                    # Primary PuLP solver
+ortools>=9.5.2237             # Optional: OR-Tools (for future use)
+
+# Natural Language Processing (optional)
+openai>=1.12.0                # Optional: For LLM constraint parsing
+tiktoken>=0.4.0               # For OpenAI token counting
+
+# Enhanced data processing
+numpy>=2.2.5                 # Numerical computations
+scipy>=1.10.0                 # Scientific computing (for advanced algorithms)
+
+# File processing
+openpyxl>=3.1.5              # Excel file support
+xlrd>=2.0.0                  # Excel file reading
+requests>=2.32.3             # HTTP requests
+
+# Visualization enhancements
+plotly>=6.0.1                # Interactive plotting
+folium>=0.14.0               # Map visualization (for route display)
+
+# Development and testing (optional)
+pytest>=7.0.0                # Testing framework
+pytest-django>=4.5.0         # Django testing integration
+
+# Performance optimization (optional)
+numba>=0.57.0                # JIT compilation for faster computations
+joblib>=1.3.0                # Parallel computing
+
+# API enhancements (optional)
+aiohttp>=3.8.0               # Async HTTP client

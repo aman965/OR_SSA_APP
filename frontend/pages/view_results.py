@@ -88,6 +88,50 @@ try:
         st.metric("Created", scenario.created_at.strftime("%Y-%m-%d %H:%M"))
         st.metric("Parameters", f"P1: {scenario.param1}, P2: {scenario.param2}, P3: {scenario.param3}")
 
+    # Applied Constraints Section
+    if 'applied_constraints' in solution and solution['applied_constraints']:
+        st.subheader("🎯 Applied Constraints")
+        constraints_df = pd.DataFrame(solution['applied_constraints'])
+        
+        # Enhanced constraint display
+        for i, constraint in enumerate(solution['applied_constraints']):
+            with st.expander(f"Constraint {i+1}: {constraint.get('type', 'Unknown')}", expanded=True):
+                col1, col2, col3 = st.columns(3)
+                with col1:
+                    st.write("**Original Prompt:**")
+                    st.code(constraint.get('original', 'N/A'))
+                with col2:
+                    st.write("**Constraint Type:**")
+                    st.info(constraint.get('type', 'Unknown'))
+                with col3:
+                    st.write("**Parsing Method:**")
+                    method = constraint.get('method', 'unknown')
+                    if method == 'pattern_matching':
+                        st.success("🎯 Pattern Matching")
+                        st.caption("Confidence: ≥85% (High)")
+                    elif method == 'llm':
+                        st.warning("🤖 LLM Parsing")  
+                        st.caption("Confidence: <85% (Used OpenAI)")
+                    elif method == 'fallback':
+                        st.info("🔄 Fallback Parsing")
+                        st.caption("No pattern match, OpenAI unavailable")
+                    elif method == 'fallback_pattern':
+                        st.success("🔍 Fallback Pattern Match")
+                        st.caption("Matched improved pattern rules")
+                    else:
+                        st.error("❓ Unknown Method")
+                        st.caption(f"Method: {method}")
+    else:
+        st.subheader("🎯 Applied Constraints")
+        st.info("No custom constraints were applied to this scenario.")
+
+    # GPT Constraint Prompt Display
+    if scenario.gpt_prompt and scenario.gpt_prompt.strip():
+        st.subheader("🗣️ User Constraint Prompt")
+        st.info(f"💬 **Original Request:** {scenario.gpt_prompt}")
+        if 'applied_constraints' not in solution or not solution['applied_constraints']:
+            st.warning("⚠️ Constraint prompt was provided but no constraints were successfully applied.")
+
     # KPI Cards
     st.subheader("Key Performance Indicators")
     kpi_cols = st.columns(4)
@@ -102,7 +146,20 @@ try:
         avg_route_length = solution['total_distance'] / len(solution['routes'])
         st.metric("Avg Route Length", f"{avg_route_length:.2f} km")
 
-    # Routes Table
+    # Load demand data for route calculations
+    try:
+        dataset_path = os.path.join(MEDIA_ROOT, scenario.snapshot.linked_upload.file.name)
+        demand_df = pd.read_csv(dataset_path)
+        demand_dict = {}
+        if 'demand' in demand_df.columns:
+            demand_dict = dict(zip(demand_df.index, demand_df['demand']))
+        else:
+            st.warning("No demand column found in dataset")
+    except Exception as e:
+        st.warning(f"Could not load demand data: {e}")
+        demand_dict = {}
+
+    # Enhanced Routes Table with Load/Demand
     st.subheader("Route Details")
     try:
         route_rows = []
@@ -113,26 +170,60 @@ try:
                 stops = len(route.get("stops", [])) - 2 if len(route.get("stops", [])) > 2 else 0
                 distance = round(route.get("distance", 0), 2)
                 duration = round(route.get("duration", 0), 2)
-                sequence = " → ".join(str(node) for node in route.get("stops", []))
+                stop_sequence = route.get("stops", [])
+                sequence = " → ".join(str(node) for node in stop_sequence)
             else:
                 stops = len(route) - 2 if len(route) > 2 else 0
                 distance = None
                 duration = None
+                stop_sequence = route
                 sequence = " → ".join(str(node) for node in route)
+            
+            # Calculate total load/demand for this route
+            total_load = 0
+            if demand_dict:
+                # Sum demand for all customer stops (excluding depot)
+                customer_stops = [stop for stop in stop_sequence if stop != 0]  # Assuming depot is node 0
+                total_load = sum(demand_dict.get(stop, 0) for stop in customer_stops)
+            
             route_rows.append({
                 "Route ID": route_id,
                 "Stops": stops,
+                "Total Load": total_load if demand_dict else "N/A",
                 "Distance (km)": distance,
                 "Duration (min)": duration,
                 "Sequence": sequence
             })
-        st.dataframe(pd.DataFrame(route_rows), use_container_width=True)
+        
+        # Display enhanced route table
+        route_df = pd.DataFrame(route_rows)
+        st.dataframe(route_df, use_container_width=True)
+        
+        # Load utilization metrics
+        if demand_dict:
+            total_demand = sum(demand_dict.get(i, 0) for i in demand_dict.keys() if i != 0)  # Exclude depot
+            vehicle_capacity = scenario.param1  # P1 is capacity
+            
+            st.subheader("📊 Load Analysis")
+            load_cols = st.columns(3)
+            with load_cols[0]:
+                st.metric("Total Demand", f"{total_demand} units")
+            with load_cols[1]:
+                max_load_per_route = max([row["Total Load"] for row in route_rows if row["Total Load"] != "N/A"], default=0)
+                st.metric("Max Route Load", f"{max_load_per_route} units")
+            with load_cols[2]:
+                if vehicle_capacity and max_load_per_route:
+                    utilization = (max_load_per_route / vehicle_capacity) * 100
+                    st.metric("Max Utilization", f"{utilization:.1f}%")
+                else:
+                    st.metric("Max Utilization", "N/A")
+                    
     except Exception as e:
         st.error(f"⚠️ Error loading Route Details: {e}")
         import traceback
         st.code(traceback.format_exc())
 
-    # Visualizations
+    # Enhanced Visualizations
     st.subheader("Route Analysis")
     viz_cols = st.columns(2)
     
@@ -149,16 +240,28 @@ try:
         st.plotly_chart(fig_distance, use_container_width=True)
     
     with viz_cols[1]:
-        # Stops per Route Bar Chart
-        fig_stops = px.bar(
-            pd.DataFrame(route_rows),
-            x="Route ID",
-            y="Stops",
-            title="Stops per Route",
-            color="Stops",
-            color_continuous_scale="Plasma"
-        )
-        st.plotly_chart(fig_stops, use_container_width=True)
+        # Load per Route Bar Chart (if demand data available)
+        if demand_dict:
+            fig_load = px.bar(
+                pd.DataFrame(route_rows),
+                x="Route ID", 
+                y="Total Load",
+                title="Load per Route",
+                color="Total Load",
+                color_continuous_scale="Plasma"
+            )
+            st.plotly_chart(fig_load, use_container_width=True)
+        else:
+            # Fallback to stops per route
+            fig_stops = px.bar(
+                pd.DataFrame(route_rows),
+                x="Route ID",
+                y="Stops",
+                title="Stops per Route",
+                color="Stops",
+                color_continuous_scale="Plasma"
+            )
+            st.plotly_chart(fig_stops, use_container_width=True)
 
     st.subheader("🤖 GPT-powered Solution Analysis")
     st.write("Ask questions about this solution in natural language. Examples:")
