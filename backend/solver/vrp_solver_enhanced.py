@@ -6,15 +6,33 @@ import traceback
 import pandas as pd
 from pulp import LpProblem, LpMinimize, LpVariable, lpSum, LpBinary, LpStatus, value, PULP_CBC_CMD
 
-# Import the confidence-based constraint parsing system
+# Import the enhanced constraint parsing system
 try:
-    # Add the path to find our VRP constraint parsing modules
-    sys.path.append(os.path.join(os.path.dirname(__file__), '..', 'applications', 'vehicle_routing'))
+    # Add the path to find our enhanced VRP constraint parsing modules
+    constraint_module_path = os.path.join(os.path.dirname(__file__), '..', 'applications', 'vehicle_routing')
+    constraint_module_path = os.path.abspath(constraint_module_path)
+    if constraint_module_path not in sys.path:
+        sys.path.append(constraint_module_path)
+    
+    # Import basic constraint parsing first
     from constraint_patterns import VRPConstraintMatcher, ConstraintConverter
     from llm_parser import LLMConstraintParser
     CONSTRAINT_PARSING_AVAILABLE = True
-except ImportError:
+    
+    # Try to import enhanced modules
+    try:
+        from enhanced_constraint_parser import EnhancedConstraintParser, ParsedConstraint
+        from enhanced_constraint_applier import EnhancedConstraintApplier
+        ENHANCED_CONSTRAINT_PARSING_AVAILABLE = True
+        print(f"[vrp_solver_enhanced] Enhanced constraint parsing system loaded successfully")
+    except ImportError as enhanced_import_error:
+        print(f"[vrp_solver_enhanced] Enhanced constraint parsing not available: {enhanced_import_error}")
+        ENHANCED_CONSTRAINT_PARSING_AVAILABLE = False
+    
+except ImportError as e:
+    print(f"[vrp_solver_enhanced] Basic constraint parsing not available: {e}")
     CONSTRAINT_PARSING_AVAILABLE = False
+    ENHANCED_CONSTRAINT_PARSING_AVAILABLE = False
 
 
 def log(msg):
@@ -49,76 +67,93 @@ def calculate_pattern_confidence(pattern_result, prompt: str) -> float:
 
 def parse_constraints_intelligently(gpt_prompt, scenario_params):
     """
-    Transparently parse user constraints using confidence-based routing
+    Enhanced constraint parsing using the new constraint system
     Returns list of parsed constraints that can be applied to the model
     """
     if not gpt_prompt or not gpt_prompt.strip():
         log("No GPT prompt provided - no additional constraints to parse")
         return []
     
+    log(f"Processing constraint prompt: '{gpt_prompt}'")
+    
+    # Try enhanced constraint parsing first
+    if ENHANCED_CONSTRAINT_PARSING_AVAILABLE:
+        log("Using enhanced constraint parsing system")
+        try:
+            # Get OpenAI API key
+            openai_api_key = os.environ.get('OPENAI_API_KEY')
+            
+            # TEMPORARY WORKAROUND: If not in environment, try reading directly from secrets.toml
+            if not openai_api_key:
+                possible_paths = [
+                    os.path.join(os.path.dirname(__file__), '..', '..', '.streamlit', 'secrets.toml'),
+                    os.path.join(os.getcwd(), '.streamlit', 'secrets.toml'),
+                    '.streamlit/secrets.toml'
+                ]
+                
+                for secrets_path in possible_paths:
+                    secrets_path = os.path.abspath(secrets_path)
+                    if os.path.exists(secrets_path):
+                        try:
+                            with open(secrets_path, 'r') as f:
+                                content = f.read()
+                                for line in content.split('\n'):
+                                    stripped_line = line.strip()
+                                    if stripped_line.startswith('OPENAI_API_KEY') and '=' in stripped_line:
+                                        key_value = line.split('=', 1)[1].strip().strip('"').strip("'")
+                                        if key_value and not key_value.startswith('#') and len(key_value) > 10:
+                                            openai_api_key = key_value
+                                            log(f"✅ Successfully extracted OpenAI API key (length: {len(openai_api_key)})")
+                                            break
+                            if openai_api_key:
+                                break
+                        except Exception as e:
+                            log(f"Error reading secrets.toml: {e}")
+            
+            # Initialize enhanced parser
+            enhanced_parser = EnhancedConstraintParser(api_key=openai_api_key)
+            
+            # Parse the constraint using enhanced system
+            parsed_constraint = enhanced_parser.parse_constraint(gpt_prompt, scenario_params)
+            
+            if parsed_constraint:
+                log(f"Enhanced parsing successful: {parsed_constraint.constraint_type} ({parsed_constraint.complexity_level})")
+                log(f"Interpretation: {parsed_constraint.interpretation}")
+                
+                # Convert to legacy format for compatibility with existing apply function
+                legacy_constraint = {
+                    'original_prompt': gpt_prompt,
+                    'constraint_type': parsed_constraint.constraint_type,
+                    'subtype': parsed_constraint.subtype,
+                    'parameters': parsed_constraint.parameters or {},
+                    'entities': [{'type': e.type, 'id': e.id} for e in (parsed_constraint.entities or [])],
+                    'mathematical_format': parsed_constraint.mathematical_description,
+                    'parsing_method': parsed_constraint.parsing_method,
+                    'confidence': parsed_constraint.confidence,
+                    'complexity_level': parsed_constraint.complexity_level,
+                    'enhanced_constraint': parsed_constraint  # Store the full enhanced constraint
+                }
+                
+                return [legacy_constraint]
+            else:
+                log("Enhanced parsing failed, falling back to basic parsing")
+                
+        except Exception as e:
+            log(f"Error in enhanced constraint parsing: {e}")
+            log("Falling back to basic constraint parsing")
+    
+    # Fallback to basic constraint parsing if enhanced parsing is not available or fails
     if not CONSTRAINT_PARSING_AVAILABLE:
         log("Constraint parsing modules not available - skipping intelligent parsing")
         return []
     
-    log(f"Processing constraint prompt: '{gpt_prompt}'")
+    log("Using basic constraint parsing system")
     
     try:
-        # Initialize parsing components
+        # Initialize basic parsing components
         matcher = VRPConstraintMatcher()
         converter = ConstraintConverter()
-        
-        # Get OpenAI API key from environment (passed from Streamlit) OR directly from secrets
-        openai_api_key = os.environ.get('OPENAI_API_KEY')
-        
-        # TEMPORARY WORKAROUND: If not in environment, try reading directly from secrets.toml
-        if not openai_api_key:
-            # Try multiple possible paths for secrets.toml
-            possible_paths = [
-                os.path.join(os.path.dirname(__file__), '..', '..', '.streamlit', 'secrets.toml'),
-                os.path.join(os.getcwd(), '.streamlit', 'secrets.toml'),
-                '.streamlit/secrets.toml'
-            ]
-            
-            for secrets_path in possible_paths:
-                secrets_path = os.path.abspath(secrets_path)
-                log(f"Trying secrets path: {secrets_path}")
-                if os.path.exists(secrets_path):
-                    log(f"Found secrets file at {secrets_path}")
-                    try:
-                        with open(secrets_path, 'r') as f:
-                            content = f.read()
-                            log(f"Reading secrets content: {len(content)} characters")
-                            for line_num, line in enumerate(content.split('\n'), 1):
-                                log(f"Line {line_num}: {repr(line[:50])}...")
-                                stripped_line = line.strip()
-                                if stripped_line.startswith('OPENAI_API_KEY') and '=' in stripped_line:
-                                    log(f"Found OPENAI_API_KEY line: {repr(line)}")
-                                    key_value = line.split('=', 1)[1].strip().strip('"').strip("'")
-                                    log(f"Extracted key value: {repr(key_value[:20])}... (length: {len(key_value)})")
-                                    if key_value and not key_value.startswith('#') and len(key_value) > 10:
-                                        openai_api_key = key_value
-                                        log(f"✅ Successfully extracted OpenAI API key (length: {len(openai_api_key)})")
-                                        break
-                                    else:
-                                        log(f"❌ Invalid key value: empty={not key_value}, starts_with_hash={key_value.startswith('#') if key_value else False}, length={len(key_value) if key_value else 0}")
-                                elif stripped_line.startswith('OPENAI_API_KEY'):
-                                    log(f"Found OPENAI_API_KEY line but no = sign: {repr(line)}")
-                        if openai_api_key:
-                            break
-                    except Exception as e:
-                        log(f"Error reading secrets.toml: {e}")
-                else:
-                    log(f"Secrets file not found at {secrets_path}")
-            
-            if not openai_api_key:
-                log("Failed to find secrets.toml in any expected location")
-        
-        if openai_api_key:
-            log(f"OpenAI API key available for LLM parsing (length: {len(openai_api_key)})")
-        else:
-            log("No OpenAI API key found in environment variables or secrets.toml")
-            
-        llm_parser = LLMConstraintParser(api_key=openai_api_key)
+        llm_parser = LLMConstraintParser(api_key=openai_api_key if 'openai_api_key' in locals() else None)
         
         # Confidence threshold (hidden from user)
         confidence_threshold = 0.85
@@ -126,7 +161,6 @@ def parse_constraints_intelligently(gpt_prompt, scenario_params):
         parsed_constraints = []
         
         # Split prompt into individual constraints (simple approach)
-        # User might write: "maximum 30 capacity per vehicle, minimum 2 vehicles needed"
         constraint_sentences = [s.strip() for s in gpt_prompt.replace(',', '.').replace(';', '.').split('.') if s.strip()]
         
         for sentence in constraint_sentences:
@@ -202,25 +236,89 @@ def parse_constraints_intelligently(gpt_prompt, scenario_params):
                     fallback_result['original_prompt'] = sentence
                     parsed_constraints.append(fallback_result)
         
-        log(f"Successfully parsed {len(parsed_constraints)} constraints")
+        log(f"Successfully parsed {len(parsed_constraints)} constraints using basic parsing")
         return parsed_constraints
         
     except Exception as e:
-        log(f"Error in intelligent constraint parsing: {e}")
+        log(f"Error in basic constraint parsing: {e}")
         return []
 
 
 def apply_constraints_to_model(prob, constraints, nodes, vehicle_count, vehicle_capacity, demand, used_k, x, u):
     """
-    Apply parsed constraints to the PuLP model
-    This is where the magic happens - constraints get converted to mathematical form
+    Apply parsed constraints to the PuLP model using enhanced constraint application
+    This handles both basic and complex routing constraints
+    """
+    if not constraints:
+        log("No constraints to apply")
+        return
+    
+    log("=== APPLYING CONSTRAINTS TO MODEL ===")
+    
+    # Try enhanced constraint application first
+    if ENHANCED_CONSTRAINT_PARSING_AVAILABLE:
+        log("Using enhanced constraint application system")
+        try:
+            # Check if we have enhanced constraints
+            enhanced_constraints = []
+            basic_constraints = []
+            
+            for constraint in constraints:
+                if 'enhanced_constraint' in constraint and constraint['enhanced_constraint']:
+                    enhanced_constraints.append(constraint['enhanced_constraint'])
+                else:
+                    basic_constraints.append(constraint)
+            
+            # Apply enhanced constraints
+            if enhanced_constraints:
+                log(f"Applying {len(enhanced_constraints)} enhanced constraints")
+                enhanced_applier = EnhancedConstraintApplier()
+                
+                application_results = enhanced_applier.apply_constraints_to_model(
+                    prob, enhanced_constraints, nodes, vehicle_count, vehicle_capacity, 
+                    demand, used_k, x, u
+                )
+                
+                log(f"Enhanced constraint application results:")
+                log(f"  Total constraints: {application_results['total_constraints']}")
+                log(f"  Applied successfully: {application_results['applied_successfully']}")
+                log(f"  Failed applications: {application_results['failed_applications']}")
+                
+                if application_results['warnings']:
+                    for warning in application_results['warnings']:
+                        log(f"  Warning: {warning}")
+                
+                # Get constraint summary
+                summary = enhanced_applier.get_constraint_summary()
+                log(f"Constraint summary: {summary}")
+            
+            # Apply any remaining basic constraints using the legacy method
+            if basic_constraints:
+                log(f"Applying {len(basic_constraints)} basic constraints using legacy method")
+                _apply_basic_constraints(prob, basic_constraints, nodes, vehicle_count, vehicle_capacity, demand, used_k, x, u)
+            
+            return
+            
+        except Exception as e:
+            log(f"Error in enhanced constraint application: {e}")
+            log("Falling back to basic constraint application")
+    
+    # Fallback to basic constraint application
+    log("Using basic constraint application system")
+    _apply_basic_constraints(prob, constraints, nodes, vehicle_count, vehicle_capacity, demand, used_k, x, u)
+
+
+def _apply_basic_constraints(prob, constraints, nodes, vehicle_count, vehicle_capacity, demand, used_k, x, u):
+    """
+    Apply constraints using the basic/legacy constraint application method
     """
     for i, constraint in enumerate(constraints):
         try:
             constraint_type = constraint.get('constraint_type', 'unknown')
             params = constraint.get('parameters', {})
             
-            log(f"Applying constraint {i+1}: {constraint_type}")
+            log(f"Applying basic constraint {i+1}: {constraint_type}")
+            log(f"Constraint parameters: {params}")
             
             if constraint_type == 'vehicle_capacity_max':
                 # Maximum capacity constraint
@@ -241,17 +339,65 @@ def apply_constraints_to_model(prob, constraints, nodes, vehicle_count, vehicle_
                 prob += lpSum(used_k[k] for k in range(vehicle_count)) <= max_vehicles, f"UserMaxVehicles_{i}"
                 log(f"Applied maximum vehicles constraint: {max_vehicles}")
                 
+            elif constraint_type == 'vehicle_count':
+                # Generic vehicle count constraint - check parameters to determine min/max
+                if 'min' in params or 'min_vehicles' in params:
+                    min_vehicles = int(params.get('min', params.get('min_vehicles', 2)))
+                    prob += lpSum(used_k[k] for k in range(vehicle_count)) >= min_vehicles, f"UserMinVehicles_{i}"
+                    log(f"Applied minimum vehicles constraint: {min_vehicles}")
+                elif 'max' in params or 'max_vehicles' in params:
+                    max_vehicles = int(params.get('max', params.get('max_vehicles', vehicle_count)))
+                    prob += lpSum(used_k[k] for k in range(vehicle_count)) <= max_vehicles, f"UserMaxVehicles_{i}"
+                    log(f"Applied maximum vehicles constraint: {max_vehicles}")
+                elif params.get('constraint_direction') == 'minimize':
+                    # Minimize vehicle count by adding penalty to objective
+                    log(f"Applied vehicle count minimization (handled via objective)")
+                elif params.get('constraint_direction') == 'minimum':
+                    # Handle case where constraint_direction is 'minimum' but no explicit min_vehicles
+                    # Look for any numeric value in the parameters
+                    min_vehicles = 2  # Default from the constraint text
+                    for key, value in params.items():
+                        if isinstance(value, (int, float)) and value > 0:
+                            min_vehicles = int(value)
+                            break
+                    prob += lpSum(used_k[k] for k in range(vehicle_count)) >= min_vehicles, f"UserMinVehicles_{i}"
+                    log(f"Applied minimum vehicles constraint (from direction): {min_vehicles}")
+                else:
+                    log(f"Vehicle count constraint found but no clear min/max specified: {params}")
+                    # Try to extract any numeric value as minimum
+                    for key, value in params.items():
+                        if isinstance(value, (int, float)) and value > 0:
+                            min_vehicles = int(value)
+                            prob += lpSum(used_k[k] for k in range(vehicle_count)) >= min_vehicles, f"UserMinVehicles_{i}"
+                            log(f"Applied minimum vehicles constraint (inferred): {min_vehicles}")
+                            break
+                
             elif constraint_type == 'total_distance_max':
                 # Maximum total distance (approximation)
                 max_distance = float(params.get('distance', float('inf')))
                 # This would need the objective function, so we'll handle it differently
                 log(f"Maximum distance constraint noted: {max_distance} (applied via objective bound)")
                 
+            # Handle enhanced constraint types that might fall back to basic application
+            elif constraint_type == 'node_separation':
+                log(f"Node separation constraint detected but enhanced application failed - skipping")
+                log(f"Constraint: {constraint.get('original_prompt', 'unknown')}")
+                
+            elif constraint_type == 'node_grouping':
+                log(f"Node grouping constraint detected but enhanced application failed - skipping")
+                log(f"Constraint: {constraint.get('original_prompt', 'unknown')}")
+                
+            elif constraint_type == 'multi_part':
+                log(f"Multi-part constraint detected but enhanced application failed - skipping")
+                log(f"Constraint: {constraint.get('original_prompt', 'unknown')}")
+                
             else:
                 log(f"Unknown constraint type: {constraint_type} - skipped")
                 
         except Exception as e:
-            log(f"Error applying constraint {i+1}: {e}")
+            log(f"Error applying basic constraint {i+1}: {e}")
+            import traceback
+            log(f"Traceback: {traceback.format_exc()}")
 
 
 def load_scenario(scenario_path):
@@ -409,13 +555,24 @@ def build_and_solve_vrp(scenario, df, output_dir):
             ]
         }
         
-        with open(os.path.join(output_dir, "solution_summary.json"), 'w') as f:
+        # Save solution file in outputs directory (new location)
+        solution_path_outputs = os.path.join(output_dir, "solution_summary.json")
+        with open(solution_path_outputs, 'w') as f:
             json.dump(solution, f, indent=4)
+        log(f"Solution written to outputs directory: {solution_path_outputs}")
+        
+        # Also save solution file in root scenario directory for backward compatibility
+        root_scenario_dir = os.path.dirname(output_dir)
+        solution_path_root = os.path.join(root_scenario_dir, "solution_summary.json")
+        with open(solution_path_root, 'w') as f:
+            json.dump(solution, f, indent=4)
+        log(f"Solution written to root directory: {solution_path_root}")
+        
         log(f"Solution written with {len(parsed_constraints)} applied constraints")
         
         # Comparison metrics
         compare_metrics = {
-            "scenario_id": os.path.basename(output_dir),
+            "scenario_id": os.path.basename(root_scenario_dir),
             "snapshot_id": scenario.get("snapshot_id", ""),
             "parameters": scenario.get("params", {}),
             "constraints_applied": len(parsed_constraints),
@@ -440,9 +597,19 @@ def build_and_solve_vrp(scenario, df, output_dir):
             "details": str(prob.status),
             "constraints_attempted": len(parsed_constraints)
         }
-        with open(os.path.join(output_dir, "failure_summary.json"), 'w') as f:
+        
+        # Save failure file in outputs directory (new location)
+        failure_path_outputs = os.path.join(output_dir, "failure_summary.json")
+        with open(failure_path_outputs, 'w') as f:
             json.dump(failure, f, indent=4)
-        log(f"Failure written to failure_summary.json")
+        log(f"Failure written to outputs directory: {failure_path_outputs}")
+        
+        # Also save failure file in root scenario directory for backward compatibility
+        root_scenario_dir = os.path.dirname(output_dir)
+        failure_path_root = os.path.join(root_scenario_dir, "failure_summary.json")
+        with open(failure_path_root, 'w') as f:
+            json.dump(failure, f, indent=4)
+        log(f"Failure written to root directory: {failure_path_root}")
 
 
 def main():
@@ -479,8 +646,19 @@ def main():
         output_dir = os.path.dirname(args.scenario_path)
         outputs_subdir = os.path.join(output_dir, "outputs")
         os.makedirs(outputs_subdir, exist_ok=True)
-        with open(os.path.join(outputs_subdir, "failure_summary.json"), 'w') as f:
+        
+        # Save failure file in outputs directory (new location)
+        failure_path_outputs = os.path.join(outputs_subdir, "failure_summary.json")
+        with open(failure_path_outputs, 'w') as f:
             json.dump(failure, f, indent=4)
+        log(f"Error failure written to outputs directory: {failure_path_outputs}")
+        
+        # Also save failure file in root scenario directory for backward compatibility
+        failure_path_root = os.path.join(output_dir, "failure_summary.json")
+        with open(failure_path_root, 'w') as f:
+            json.dump(failure, f, indent=4)
+        log(f"Error failure written to root directory: {failure_path_root}")
+        
         sys.exit(1)
 
 

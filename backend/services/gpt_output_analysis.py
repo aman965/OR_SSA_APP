@@ -100,91 +100,33 @@ def call_chatgpt(prompt: str, model: str = None) -> str:
             return "Error: OpenAI API key is empty in secrets"
         
         try:
-            # Skip the newer client and go straight to legacy client
-            print("Skipping newer OpenAI client, using legacy client directly")
-            raise ImportError("Forcing legacy client usage")
-            
+            # Use the new OpenAI client (>= 1.0.0)
             from openai import OpenAI
             print("Using newer OpenAI client (>= 1.0.0)")
             
-            client = OpenAI(api_key=api_key, proxies=None)
-            print("Created OpenAI client with explicit proxies=None")
+            client = OpenAI(api_key=api_key)
+            print("Created OpenAI client successfully")
             
             # Create messages as a list of dictionaries
             messages = [{"role": "user", "content": prompt}]
-            print(f"Messages type: {type(messages)}")
-            print(f"First message type: {type(messages[0])}")
+            print(f"Messages prepared: {len(messages)} message(s)")
             
-            payload = {
-                "model": model,
-                "messages": messages,
-                "temperature": 0.1,
-                "max_tokens": 1000,
-                "response_format": {"type": "text"}  # Ensure we get plain text back
-            }
-            
-            print(f"Payload type: {type(payload)}")
-            print(f"Payload keys: {list(payload.keys())}")
-            print(f"Response format: {payload.get('response_format')}")
-            
-            response = client.chat.completions.create(**payload)
+            response = client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=0.1,
+                max_tokens=1000
+            )
             print("Got response from OpenAI API (new client)")
             
             answer = response.choices[0].message.content.strip()
             print(f"Response length: {len(answer)}")
             return answer
             
-        except (AttributeError, ImportError, ModuleNotFoundError) as e:
-            print(f"Newer OpenAI client failed: {str(e)}, falling back to legacy client")
+        except Exception as e:
+            print(f"Error with new OpenAI client: {str(e)}")
+            return f"Error with OpenAI API request: {str(e)}"
             
-            print("Using legacy OpenAI client (< 1.0.0)")
-            
-            # Set API key for legacy client
-            openai.api_key = api_key
-            openai.proxies = None
-            print("Set API key and proxies=None for legacy openai library")
-            
-            if hasattr(openai, 'ChatCompletion'):
-                # Create messages as a list of dictionaries
-                messages = [{"role": "user", "content": prompt}]
-                print(f"Messages type: {type(messages)}")
-                print(f"First message type: {type(messages[0])}")
-                
-                payload = {
-                    "model": model,
-                    "messages": messages,
-                    "temperature": 0.1,
-                    "max_tokens": 1000
-                }
-                
-                print(f"Payload type: {type(payload)}")
-                print(f"Payload keys: {list(payload.keys())}")
-                
-                response = openai.ChatCompletion.create(**payload)
-                print("Got response from OpenAI API (legacy client)")
-                
-                answer = response.choices[0].message['content'].strip()
-                print(f"Response length: {len(answer)}")
-                return answer
-            else:
-                print("ChatCompletion not available, using Completion API")
-                
-                payload = {
-                    "engine": model,
-                    "prompt": prompt,
-                    "temperature": 0.1,
-                    "max_tokens": 1000
-                }
-                
-                print(f"Payload type: {type(payload)}")
-                print(f"Payload keys: {list(payload.keys())}")
-                
-                response = openai.Completion.create(**payload)
-                print("Got response from OpenAI API (Completion API)")
-                
-                answer = response.choices[0].text.strip()
-                print(f"Response length: {len(answer)}")
-                return answer
     except Exception as e:
         error_msg = f"Error with OpenAI API request: {str(e)}"
         print(error_msg)
@@ -431,9 +373,16 @@ def analyze_output(user_question: str, scenario_id: int) -> Dict[str, Any]:
         
         try:
             solution_paths = [
+                # Check outputs directory first (enhanced solver saves here)
                 os.path.normpath(os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "outputs", "solution_summary.json")),
+                # Then check root directory (standard solver saves here)
                 os.path.normpath(os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "solution_summary.json")),
-                os.path.normpath(os.path.join(MEDIA_ROOT, "scenarios", f"scenario_{scenario_id}", "solution_summary.json"))
+                # Legacy paths
+                os.path.normpath(os.path.join(MEDIA_ROOT, "scenarios", f"scenario_{scenario_id}", "solution_summary.json")),
+                # Windows-style path handling for outputs directory
+                os.path.normpath(os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "outputs", "solution_summary.json")).replace('/', '\\'),
+                # Windows-style path handling for root directory
+                os.path.normpath(os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id), "solution_summary.json")).replace('/', '\\')
             ]
             
             solution_summary = None
@@ -442,6 +391,7 @@ def analyze_output(user_question: str, scenario_id: int) -> Dict[str, Any]:
             for path in solution_paths:
                 print(f"Checking solution path: {path}")
                 print(f"Path exists: {os.path.exists(path)}")
+                print(f"Absolute path: {os.path.abspath(path)}")
                 
                 if os.path.exists(path):
                     solution_path = path
@@ -453,11 +403,35 @@ def analyze_output(user_question: str, scenario_id: int) -> Dict[str, Any]:
                     print(f"Loaded solution with keys: {list(solution_summary.keys())}")
                     break
             
+            # If still not found, try to list the actual directory contents
+            if not solution_summary:
+                scenario_dir = os.path.normpath(os.path.join(MEDIA_ROOT, "scenarios", str(scenario_id)))
+                print(f"Solution not found. Checking scenario directory: {scenario_dir}")
+                if os.path.exists(scenario_dir):
+                    print(f"Directory contents: {os.listdir(scenario_dir)}")
+                    # Check for any JSON files that might be the solution
+                    for file in os.listdir(scenario_dir):
+                        if file.endswith('.json') and 'solution' in file.lower():
+                            potential_path = os.path.join(scenario_dir, file)
+                            print(f"Found potential solution file: {potential_path}")
+                            try:
+                                with open(potential_path, 'r') as f:
+                                    test_data = json.load(f)
+                                if 'routes' in test_data or 'total_distance' in test_data:
+                                    solution_summary = test_data
+                                    solution_path = potential_path
+                                    print(f"Using solution file: {solution_path}")
+                                    break
+                            except:
+                                continue
+                else:
+                    print(f"Scenario directory does not exist: {scenario_dir}")
+            
             if not solution_summary:
                 print(f"Solution file not found at any path")
                 return {
                     "type": "error",
-                    "data": f"Solution file not found. Tried paths: {', '.join(solution_paths)}"
+                    "data": f"Solution file not found. Tried paths: {', '.join(solution_paths)}. Please ensure the scenario has been solved successfully."
                 }
         except Exception as e:
             print(f"Error loading solution: {str(e)}")

@@ -181,9 +181,14 @@ OPENAI_API_KEY = "your_api_key_here"
 def get_openai_api_key() -> Optional[str]:
     """Get OpenAI API key from various sources"""
     try:
-        # Try Streamlit secrets first
-        if hasattr(st, 'secrets') and 'OPENAI_API_KEY' in st.secrets:
-            return st.secrets['OPENAI_API_KEY']
+        # Try Streamlit secrets first - both formats
+        if hasattr(st, 'secrets'):
+            # Try the nested format first
+            if 'openai' in st.secrets and 'api_key' in st.secrets['openai']:
+                return st.secrets['openai']['api_key']
+            # Try the direct format
+            elif 'OPENAI_API_KEY' in st.secrets:
+                return st.secrets['OPENAI_API_KEY']
     except:
         pass
     

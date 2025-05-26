@@ -86,9 +86,20 @@ st.header("Snapshots & Scenarios")
 snapshots = Snapshot.objects.select_related("linked_upload").order_by("-created_at")
 for snap in snapshots:
     with st.expander(f"📦 {snap.name}"):
-        st.markdown(f"**Linked Dataset:** {snap.linked_upload.name if snap.linked_upload else 'N/A'}")
-        st.markdown(f"**Created At:** {snap.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
-        st.markdown(f"**Description:** {snap.description or 'No description provided'}")
+        # Snapshot info section
+        col1, col2 = st.columns([3, 1])
+        with col1:
+            st.markdown(f"**Linked Dataset:** {snap.linked_upload.name if snap.linked_upload else 'N/A'}")
+            st.markdown(f"**Created At:** {snap.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
+            st.markdown(f"**Description:** {snap.description or 'No description provided'}")
+        
+        with col2:
+            # Add "Create Scenario" button for this snapshot
+            if st.button(f"➕ Create Scenario", key=f"create_scenario_{snap.name}", help=f"Create a new scenario for snapshot '{snap.name}'"):
+                # Set the selected snapshot in session state and redirect to scenario builder
+                st.session_state["selected_snapshot_for_scenario_builder"] = snap.name
+                st.session_state.global_logs.append(f"Redirecting to scenario builder with snapshot: {snap.name}")
+                st.switch_page("pages/scenario_builder.py")
         
         # List real scenarios for this snapshot
         scenarios = snap.scenario_set.all().order_by("-created_at")

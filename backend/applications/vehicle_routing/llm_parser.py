@@ -54,11 +54,24 @@ class LLMConstraintParser:
         # Try streamlit secrets (if available)
         try:
             import streamlit as st
-            if hasattr(st, 'secrets') and 'OPENAI_API_KEY' in st.secrets:
-                print(f"[LLM Debug] Found API key in streamlit secrets")
-                return st.secrets['OPENAI_API_KEY']
+            # Try both formats of the API key in secrets
+            if hasattr(st, 'secrets'):
+                # Try the nested format first
+                if 'openai' in st.secrets and 'api_key' in st.secrets['openai']:
+                    api_key = st.secrets['openai']['api_key']
+                    print(f"[LLM Debug] Found API key in streamlit secrets (openai.api_key)")
+                    return api_key
+                # Try the direct format
+                elif 'OPENAI_API_KEY' in st.secrets:
+                    api_key = st.secrets['OPENAI_API_KEY']
+                    print(f"[LLM Debug] Found API key in streamlit secrets (OPENAI_API_KEY)")
+                    return api_key
+                else:
+                    print(f"[LLM Debug] Available secrets keys: {list(st.secrets.keys())}")
+                    if 'openai' in st.secrets:
+                        print(f"[LLM Debug] Available openai secrets: {list(st.secrets['openai'].keys())}")
             else:
-                print(f"[LLM Debug] No streamlit secrets or no OPENAI_API_KEY in secrets")
+                print(f"[LLM Debug] No streamlit secrets available")
         except Exception as e:
             print(f"[LLM Debug] Error accessing streamlit secrets: {e}")
             

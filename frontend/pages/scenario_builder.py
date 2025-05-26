@@ -106,15 +106,28 @@ def run_model_for_scenario(scenario_id):
             
             # Try to get OpenAI API key from Streamlit secrets
             try:
-                if hasattr(st, 'secrets') and 'OPENAI_API_KEY' in st.secrets:
-                    api_key = st.secrets['OPENAI_API_KEY']
+                api_key = None
+                if hasattr(st, 'secrets'):
+                    # Try the nested format first
+                    if 'openai' in st.secrets and 'api_key' in st.secrets['openai']:
+                        api_key = st.secrets['openai']['api_key']
+                        st.session_state.global_logs.append(f"OpenAI API key found in secrets (openai.api_key) - length: {len(api_key)}")
+                    # Try the direct format
+                    elif 'OPENAI_API_KEY' in st.secrets:
+                        api_key = st.secrets['OPENAI_API_KEY']
+                        st.session_state.global_logs.append(f"OpenAI API key found in secrets (OPENAI_API_KEY) - length: {len(api_key)}")
+                    else:
+                        st.session_state.global_logs.append("No OpenAI API key found in secrets - solver will use fallback parsing")
+                        st.session_state.global_logs.append(f"Debug: Available secrets keys: {list(st.secrets.keys())}")
+                        if 'openai' in st.secrets:
+                            st.session_state.global_logs.append(f"Debug: Available openai secrets: {list(st.secrets['openai'].keys())}")
+                
+                if api_key:
                     env['OPENAI_API_KEY'] = api_key
                     st.session_state.global_logs.append(f"OpenAI API key passed to enhanced solver (length: {len(api_key)})")
                 else:
                     st.session_state.global_logs.append("No OpenAI API key found in secrets - solver will use fallback parsing")
                     st.session_state.global_logs.append(f"Debug: hasattr(st, 'secrets'): {hasattr(st, 'secrets')}")
-                    if hasattr(st, 'secrets'):
-                        st.session_state.global_logs.append(f"Debug: Available secrets keys: {list(st.secrets.keys())}")
             except Exception as e:
                 st.session_state.global_logs.append(f"Could not access OpenAI API key: {e}")
             
@@ -422,7 +435,24 @@ with st.expander("Create New Scenario", expanded=True):
             selected_snapshot_name_form = None # Unique key for form
             snapshot_obj_form = None
         else:
-            selected_snapshot_name_form = st.selectbox("Select Snapshot", snapshot_names, help="Choose an existing snapshot to link this scenario to.", key="new_scenario_snapshot_select")
+            # Check if there's a pre-selected snapshot from the snapshots page
+            preselected_snapshot = st.session_state.get("selected_snapshot_for_scenario_builder", None)
+            
+            # Set default index based on pre-selected snapshot
+            default_index = 0
+            if preselected_snapshot and preselected_snapshot in snapshot_names:
+                default_index = snapshot_names.index(preselected_snapshot)
+                st.session_state.global_logs.append(f"Pre-selected snapshot found: {preselected_snapshot}")
+                # Clear the pre-selection after using it
+                del st.session_state["selected_snapshot_for_scenario_builder"]
+            
+            selected_snapshot_name_form = st.selectbox(
+                "Select Snapshot", 
+                snapshot_names, 
+                index=default_index,
+                help="Choose an existing snapshot to link this scenario to.", 
+                key="new_scenario_snapshot_select"
+            )
             snapshot_obj_form = Snapshot.objects.get(name=selected_snapshot_name_form) if selected_snapshot_name_form else None
     except Exception as e:
         st.error(f"Error loading snapshots: {e}")
