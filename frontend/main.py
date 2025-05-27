@@ -2138,5 +2138,253 @@ def show_inventory_function():
     elif st.session_state.active_inventory_tab == 4:
         show_embedded_compare_outputs()  # Reuse the same compare outputs
 
+def show_inventory_optimization_streamlit():
+    """Streamlit-only inventory optimization without Django backend"""
+    st.title("📦 Inventory Optimization")
+    st.write("Optimize inventory levels, ordering policies, and costs")
+    
+    # Create tabs for streamlit-only mode
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Data Input", "⚙️ Parameters", "🚀 Optimize", "📈 Results"])
+    
+    with tab1:
+        st.header("📊 Data Input")
+        
+        # Sample data option
+        if st.button("Load Sample Data"):
+            sample_data = {
+                'item_id': ['ITEM_001', 'ITEM_002', 'ITEM_003', 'ITEM_004', 'ITEM_005'],
+                'annual_demand': [1200, 800, 1500, 600, 2000],
+                'unit_cost': [25.0, 15.0, 40.0, 10.0, 30.0],
+                'lead_time_days': [7, 5, 10, 3, 14],
+                'category': ['A', 'B', 'A', 'C', 'A'],
+                'supplier': ['SUP_001', 'SUP_002', 'SUP_001', 'SUP_003', 'SUP_002']
+            }
+            st.session_state.inventory_data = pd.DataFrame(sample_data)
+            st.success("✅ Sample data loaded!")
+        
+        # File upload
+        uploaded_file = st.file_uploader("Upload Inventory Data", type=['csv', 'xlsx'])
+        if uploaded_file:
+            try:
+                if uploaded_file.name.endswith('.csv'):
+                    df = pd.read_csv(uploaded_file)
+                else:
+                    df = pd.read_excel(uploaded_file)
+                st.session_state.inventory_data = df
+                st.success("✅ Data uploaded successfully!")
+            except Exception as e:
+                st.error(f"Error loading file: {e}")
+        
+        # Display current data
+        if 'inventory_data' in st.session_state:
+            st.subheader("Current Data")
+            st.dataframe(st.session_state.inventory_data, use_container_width=True)
+            
+            # Data validation
+            required_cols = ['item_id', 'annual_demand', 'unit_cost', 'lead_time_days']
+            missing_cols = [col for col in required_cols if col not in st.session_state.inventory_data.columns]
+            if missing_cols:
+                st.error(f"Missing required columns: {missing_cols}")
+            else:
+                st.success("✅ Data validation passed!")
+    
+    with tab2:
+        st.header("⚙️ Optimization Parameters")
+        
+        col1, col2 = st.columns(2)
+        with col1:
+            holding_cost_rate = st.number_input("Holding Cost Rate (%)", min_value=0.1, max_value=50.0, value=20.0, step=0.1)
+            ordering_cost = st.number_input("Ordering Cost per Order ($)", min_value=1.0, value=50.0, step=1.0)
+            service_level = st.slider("Service Level (%)", min_value=80, max_value=99, value=95)
+        
+        with col2:
+            max_inventory_budget = st.number_input("Max Inventory Budget ($)", min_value=0, value=100000, step=1000)
+            demand_variability = st.selectbox("Demand Variability", ["Low", "Medium", "High"])
+            optimization_objective = st.selectbox("Optimization Objective", 
+                                                ["Minimize Total Cost", "Maximize Service Level", "Balance Cost & Service"])
+        
+        # Store parameters in session state
+        st.session_state.inventory_params = {
+            'holding_cost_rate': holding_cost_rate / 100,
+            'ordering_cost': ordering_cost,
+            'service_level': service_level / 100,
+            'max_inventory_budget': max_inventory_budget,
+            'demand_variability': demand_variability,
+            'optimization_objective': optimization_objective
+        }
+    
+    with tab3:
+        st.header("🚀 Run Optimization")
+        
+        if 'inventory_data' not in st.session_state:
+            st.warning("Please load data first in the Data Input tab")
+        else:
+            if st.button("🚀 Optimize Inventory", type="primary"):
+                with st.spinner("Running inventory optimization..."):
+                    try:
+                        # Run the optimization
+                        results = run_inventory_optimization_streamlit(
+                            st.session_state.inventory_data, 
+                            st.session_state.get('inventory_params', {})
+                        )
+                        st.session_state.inventory_results = results
+                        st.success("✅ Optimization completed successfully!")
+                        
+                        # Show quick summary
+                        col1, col2, col3, col4 = st.columns(4)
+                        with col1:
+                            st.metric("Total Annual Cost", f"${results['total_cost']:,.2f}")
+                        with col2:
+                            st.metric("Items Optimized", results['num_items'])
+                        with col3:
+                            st.metric("Avg Service Level", f"{results['avg_service_level']:.1%}")
+                        with col4:
+                            st.metric("Total Inventory Value", f"${results['total_inventory_value']:,.2f}")
+                            
+                    except Exception as e:
+                        st.error(f"Optimization failed: {e}")
+                        st.exception(e)
+    
+    with tab4:
+        st.header("📈 Optimization Results")
+        
+        if 'inventory_results' not in st.session_state:
+            st.info("Run optimization first to see results")
+        else:
+            results = st.session_state.inventory_results
+            
+            # KPI Dashboard
+            st.subheader("📊 Key Performance Indicators")
+            col1, col2, col3, col4 = st.columns(4)
+            with col1:
+                st.metric("Total Annual Cost", f"${results['total_cost']:,.2f}")
+            with col2:
+                st.metric("Holding Cost", f"${results['total_holding_cost']:,.2f}")
+            with col3:
+                st.metric("Ordering Cost", f"${results['total_ordering_cost']:,.2f}")
+            with col4:
+                st.metric("Service Level", f"{results['avg_service_level']:.1%}")
+            
+            # Detailed results tabs
+            result_tab1, result_tab2, result_tab3 = st.tabs(["📋 Inventory Policy", "📊 Cost Analysis", "📈 Visualizations"])
+            
+            with result_tab1:
+                st.subheader("Optimal Inventory Policy")
+                if 'items' in results:
+                    policy_df = pd.DataFrame(results['items'])
+                    st.dataframe(policy_df, use_container_width=True)
+                    
+                    # Download option
+                    csv = policy_df.to_csv(index=False)
+                    st.download_button(
+                        "📥 Download Policy",
+                        csv,
+                        "inventory_policy.csv",
+                        "text/csv"
+                    )
+            
+            with result_tab2:
+                st.subheader("Cost Breakdown Analysis")
+                
+                # Cost breakdown chart
+                cost_data = {
+                    'Cost Type': ['Holding Cost', 'Ordering Cost'],
+                    'Amount': [results['total_holding_cost'], results['total_ordering_cost']]
+                }
+                cost_df = pd.DataFrame(cost_data)
+                
+                import plotly.express as px
+                fig = px.pie(cost_df, values='Amount', names='Cost Type', title='Cost Breakdown')
+                st.plotly_chart(fig, use_container_width=True)
+            
+            with result_tab3:
+                st.subheader("Inventory Analysis Charts")
+                
+                if 'items' in results:
+                    items_df = pd.DataFrame(results['items'])
+                    
+                    # EOQ vs Demand scatter plot
+                    fig1 = px.scatter(items_df, x='annual_demand', y='eoq', 
+                                     title='EOQ vs Annual Demand', 
+                                     labels={'annual_demand': 'Annual Demand', 'eoq': 'Economic Order Quantity'})
+                    st.plotly_chart(fig1, use_container_width=True)
+                    
+                    # ABC Analysis
+                    if 'category' in items_df.columns:
+                        category_counts = items_df['category'].value_counts()
+                        fig2 = px.bar(x=category_counts.index, y=category_counts.values,
+                                     title='ABC Category Distribution',
+                                     labels={'x': 'Category', 'y': 'Number of Items'})
+                        st.plotly_chart(fig2, use_container_width=True)
+
+def run_inventory_optimization_streamlit(data, params):
+    """Run inventory optimization without Django backend"""
+    import numpy as np
+    from scipy import stats
+    
+    # Default parameters
+    holding_rate = params.get('holding_cost_rate', 0.20)
+    ordering_cost = params.get('ordering_cost', 50.0)
+    service_level = params.get('service_level', 0.95)
+    
+    results = {
+        'items': [],
+        'total_cost': 0,
+        'total_holding_cost': 0,
+        'total_ordering_cost': 0,
+        'total_inventory_value': 0,
+        'num_items': len(data),
+        'avg_service_level': service_level
+    }
+    
+    for _, item in data.iterrows():
+        # Basic EOQ calculation
+        annual_demand = item['annual_demand']
+        unit_cost = item['unit_cost']
+        lead_time = item.get('lead_time_days', 7)
+        
+        # Economic Order Quantity
+        eoq = np.sqrt((2 * annual_demand * ordering_cost) / (holding_rate * unit_cost))
+        
+        # Safety stock (simplified)
+        demand_std = annual_demand * 0.2  # Assume 20% variability
+        z_score = stats.norm.ppf(service_level)
+        safety_stock = z_score * demand_std * np.sqrt(lead_time / 365)
+        
+        # Reorder point
+        avg_daily_demand = annual_demand / 365
+        reorder_point = (avg_daily_demand * lead_time) + safety_stock
+        
+        # Costs
+        holding_cost = (eoq / 2 + safety_stock) * unit_cost * holding_rate
+        order_cost = (annual_demand / eoq) * ordering_cost
+        total_item_cost = holding_cost + order_cost
+        
+        # Inventory value
+        avg_inventory = eoq / 2 + safety_stock
+        inventory_value = avg_inventory * unit_cost
+        
+        item_result = {
+            'item_id': item['item_id'],
+            'annual_demand': annual_demand,
+            'unit_cost': unit_cost,
+            'eoq': round(eoq, 2),
+            'safety_stock': round(safety_stock, 2),
+            'reorder_point': round(reorder_point, 2),
+            'holding_cost': round(holding_cost, 2),
+            'ordering_cost': round(order_cost, 2),
+            'total_cost': round(total_item_cost, 2),
+            'inventory_value': round(inventory_value, 2),
+            'category': item.get('category', 'A')
+        }
+        
+        results['items'].append(item_result)
+        results['total_cost'] += total_item_cost
+        results['total_holding_cost'] += holding_cost
+        results['total_ordering_cost'] += order_cost
+        results['total_inventory_value'] += inventory_value
+    
+    return results
+
 if __name__ == "__main__":
     main() 
