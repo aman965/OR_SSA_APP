@@ -59,6 +59,10 @@ if STREAMLIT_CLOUD_MODE:
             # Sidebar navigation
             st.sidebar.title("🔧 OR SaaS Applications")
             st.sidebar.markdown("---")
+            
+            # Force inventory optimization as default in cloud mode
+            if 'cloud_app_choice' not in st.session_state:
+                st.session_state.cloud_app_choice = "📦 Inventory Optimization"
 
             # Main application selection dropdown
             app_choice = st.sidebar.selectbox(
@@ -70,7 +74,8 @@ if STREAMLIT_CLOUD_MODE:
                     "📅 Scheduling (Coming Soon)", 
                     "🌐 Network Flow (Coming Soon)"
                 ],
-                index=1  # Default to Inventory Optimization
+                index=1,  # Default to Inventory Optimization
+                key="cloud_app_choice"
             )
 
             # Route to appropriate page
@@ -84,7 +89,7 @@ if STREAMLIT_CLOUD_MODE:
                 st.info("💡 **Try our Inventory Optimization instead!** It's fully functional in Streamlit Cloud mode.")
                 
                 if st.button("Go to Inventory Optimization", type="primary"):
-                    st.session_state.page = "inventory"
+                    st.session_state.cloud_app_choice = "📦 Inventory Optimization"
                     st.rerun()
                     
                 st.markdown("---")
