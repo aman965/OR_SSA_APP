@@ -190,22 +190,71 @@ class EnhancedConstraintApplier:
         
         constraints_added = 0
         
-        # For each vehicle, ensure both nodes are either both served or both not served
+        # Method 1: For each vehicle k, ensure that both nodes have the same "visited" status
         for k in range(vehicle_count):
-            # Sum of incoming edges to node1 equals sum of incoming edges to node2 for vehicle k
+            # Both nodes must have the same incoming edge count for vehicle k
             prob += (
                 lpSum(x[i, node1, k] for i in nodes if i != node1) == 
                 lpSum(x[i, node2, k] for i in nodes if i != node2)
-            ), f"NodeGrouping_{node1}_{node2}_Vehicle_{k}_{constraint_id}"
+            ), f"NodeGrouping_Same_{node1}_{node2}_Vehicle_{k}_{constraint_id}"
             constraints_added += 1
         
-        print(f"[Enhanced Applier] Applied node grouping: nodes {node1} and {node2} must be on same route")
+        # Method 2: Cross-vehicle exclusion - if any vehicle visits one node, no other vehicle can visit the other
+        for k in range(vehicle_count):
+            for other_k in range(vehicle_count):
+                if k != other_k:
+                    # If node1 is visited by vehicle k, then node2 cannot be visited by vehicle other_k
+                    prob += (
+                        lpSum(x[i, node1, k] for i in nodes if i != node1) + 
+                        lpSum(x[i, node2, other_k] for i in nodes if i != node2)
+                    ) <= 1, f"NodeGrouping_Exclusive_{node1}_{node2}_V{k}_V{other_k}_{constraint_id}"
+                    constraints_added += 1
+        
+        # Method 3: Strong coupling constraint - if either node is visited, both must be visited by the same vehicle
+        # This creates a binary variable for each vehicle indicating if both nodes are served by that vehicle
+        from pulp import LpVariable, LpBinary
+        
+        # Create auxiliary variables for each vehicle indicating if both nodes are served together
+        both_served_vars = {}
+        for k in range(vehicle_count):
+            both_served_vars[k] = LpVariable(f"BothServed_{node1}_{node2}_V{k}_{constraint_id}", cat=LpBinary)
+            
+            # If both_served[k] = 1, then both nodes must be served by vehicle k
+            prob += (
+                lpSum(x[i, node1, k] for i in nodes if i != node1) >= both_served_vars[k]
+            ), f"NodeGrouping_Force1_{node1}_{node2}_V{k}_{constraint_id}"
+            constraints_added += 1
+            
+            prob += (
+                lpSum(x[i, node2, k] for i in nodes if i != node2) >= both_served_vars[k]
+            ), f"NodeGrouping_Force2_{node1}_{node2}_V{k}_{constraint_id}"
+            constraints_added += 1
+            
+            # If either node is served by vehicle k, then both_served[k] must be 1
+            prob += (
+                both_served_vars[k] >= lpSum(x[i, node1, k] for i in nodes if i != node1)
+            ), f"NodeGrouping_Trigger1_{node1}_{node2}_V{k}_{constraint_id}"
+            constraints_added += 1
+            
+            prob += (
+                both_served_vars[k] >= lpSum(x[i, node2, k] for i in nodes if i != node2)
+            ), f"NodeGrouping_Trigger2_{node1}_{node2}_V{k}_{constraint_id}"
+            constraints_added += 1
+        
+        # Ensure exactly one vehicle serves both nodes (if they are served at all)
+        prob += (
+            lpSum(both_served_vars[k] for k in range(vehicle_count)) <= 1
+        ), f"NodeGrouping_OnlyOne_{node1}_{node2}_{constraint_id}"
+        constraints_added += 1
+        
+        print(f"[Enhanced Applier] Applied STRONG node grouping: nodes {node1} and {node2} must be on same route")
+        print(f"[Enhanced Applier] Added {constraints_added} mathematical constraints for strong grouping")
         
         return {
             "success": True,
             "constraint_type": "node_grouping",
             "mathematical_constraints_added": constraints_added,
-            "details": f"Nodes {node1} and {node2} grouped for {vehicle_count} vehicles"
+            "details": f"Nodes {node1} and {node2} grouped with STRONG constraints ({constraints_added} total)"
         }
     
     def _apply_vehicle_assignment(self, prob, constraint: ParsedConstraint, nodes, 
@@ -332,14 +381,63 @@ class EnhancedConstraintApplier:
                 details.append(f"Separation: nodes {nodes_list[0]} and {nodes_list[1]}")
                 
             elif node_constraint_type == "grouping":
-                # Apply grouping between the nodes
+                # Apply STRONG grouping between the nodes
+                node1, node2 = nodes_list[0], nodes_list[1]
+                
+                # Method 1: Both nodes have same visited status for each vehicle
                 for k in range(vehicle_count):
                     prob += (
-                        lpSum(x[i, nodes_list[0], k] for i in nodes if i != nodes_list[0]) == 
-                        lpSum(x[i, nodes_list[1], k] for i in nodes if i != nodes_list[1])
-                    ), f"MultiPart_Grouping_{nodes_list[0]}_{nodes_list[1]}_Vehicle_{k}_{constraint_id}"
+                        lpSum(x[i, node1, k] for i in nodes if i != node1) == 
+                        lpSum(x[i, node2, k] for i in nodes if i != node2)
+                    ), f"MultiPart_Grouping_Same_{node1}_{node2}_Vehicle_{k}_{constraint_id}"
                     constraints_added += 1
-                details.append(f"Grouping: nodes {nodes_list[0]} and {nodes_list[1]}")
+                
+                # Method 2: Cross-vehicle exclusion
+                for k in range(vehicle_count):
+                    for other_k in range(vehicle_count):
+                        if k != other_k:
+                            prob += (
+                                lpSum(x[i, node1, k] for i in nodes if i != node1) + 
+                                lpSum(x[i, node2, other_k] for i in nodes if i != node2)
+                            ) <= 1, f"MultiPart_Grouping_Exclusive_{node1}_{node2}_V{k}_V{other_k}_{constraint_id}"
+                            constraints_added += 1
+                
+                # Method 3: Strong coupling with auxiliary variables
+                from pulp import LpVariable, LpBinary
+                
+                both_served_vars = {}
+                for k in range(vehicle_count):
+                    both_served_vars[k] = LpVariable(f"MultiPart_BothServed_{node1}_{node2}_V{k}_{constraint_id}", cat=LpBinary)
+                    
+                    # Force constraints
+                    prob += (
+                        lpSum(x[i, node1, k] for i in nodes if i != node1) >= both_served_vars[k]
+                    ), f"MultiPart_Force1_{node1}_{node2}_V{k}_{constraint_id}"
+                    constraints_added += 1
+                    
+                    prob += (
+                        lpSum(x[i, node2, k] for i in nodes if i != node2) >= both_served_vars[k]
+                    ), f"MultiPart_Force2_{node1}_{node2}_V{k}_{constraint_id}"
+                    constraints_added += 1
+                    
+                    # Trigger constraints
+                    prob += (
+                        both_served_vars[k] >= lpSum(x[i, node1, k] for i in nodes if i != node1)
+                    ), f"MultiPart_Trigger1_{node1}_{node2}_V{k}_{constraint_id}"
+                    constraints_added += 1
+                    
+                    prob += (
+                        both_served_vars[k] >= lpSum(x[i, node2, k] for i in nodes if i != node2)
+                    ), f"MultiPart_Trigger2_{node1}_{node2}_V{k}_{constraint_id}"
+                    constraints_added += 1
+                
+                # Only one vehicle can serve both nodes
+                prob += (
+                    lpSum(both_served_vars[k] for k in range(vehicle_count)) <= 1
+                ), f"MultiPart_OnlyOne_{node1}_{node2}_{constraint_id}"
+                constraints_added += 1
+                
+                details.append(f"STRONG grouping: nodes {node1} and {node2}")
         
         print(f"[Enhanced Applier] Applied multi-part constraint: {'; '.join(details)}")
         

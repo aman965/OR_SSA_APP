@@ -88,7 +88,16 @@ class EnhancedConstraintParser:
             ],
             'multi_part_constraints': [
                 r'minimum\s+(\d+)\s+vehicles?\s+should\s+be\s+used.*(?:and|also|additionally).*node\s+(\d+)\s+and\s+node\s+(\d+)\s+should\s+be\s+served\s+together',
-                r'use\s+at\s+least\s+(\d+)\s+vehicles?.*(?:and|also|additionally).*(?:node|customer)\s+(\d+)\s+(?:and|,)\s+(?:node|customer)\s+(\d+)\s+(?:should\s+)?(?:not\s+be\s+served\s+together|be\s+on\s+different\s+routes)'
+                r'use\s+at\s+least\s+(\d+)\s+vehicles?.*(?:and|also|additionally).*(?:node|customer)\s+(\d+)\s+(?:and|,)\s+(?:node|customer)\s+(\d+)\s+(?:should\s+)?(?:not\s+be\s+served\s+together|be\s+on\s+different\s+routes)',
+                # Enhanced patterns for better matching
+                r'(?:at\s+least|minimum)\s+(\d+)\s+vehicles?\s+should\s+be\s+used.*(?:and|also|additionally).*node\s+(\d+)\s+and\s+(?:node\s+)?(\d+)\s+should\s+be\s+(?:served\s+together|(?:in|on)\s+(?:the\s+)?same\s+route)',
+                r'(?:at\s+least|minimum)\s+(\d+)\s+vehicles?\s+should\s+be\s+used.*(?:and|also|additionally).*node\s+(\d+)\s+and\s+(?:node\s+)?(\d+)\s+should\s+(?:not\s+be\s+served\s+together|be\s+(?:in|on)\s+different\s+routes)',
+                r'(?:use|employ)\s+(?:at\s+least|minimum)\s+(\d+)\s+vehicles?.*(?:and|also|additionally).*node\s+(\d+)\s+and\s+(?:node\s+)?(\d+)\s+should\s+be\s+(?:served\s+together|(?:in|on)\s+(?:the\s+)?same\s+route)',
+                r'(?:use|employ)\s+(?:at\s+least|minimum)\s+(\d+)\s+vehicles?.*(?:and|also|additionally).*node\s+(\d+)\s+and\s+(?:node\s+)?(\d+)\s+should\s+(?:not\s+be\s+served\s+together|be\s+(?:in|on)\s+different\s+routes)',
+                # Additional patterns for "together in a route" variations
+                r'(?:at\s+least|minimum)\s+(\d+)\s+vehicles?\s+should\s+be\s+used.*(?:and|also|additionally).*nodes?\s+(\d+)\s+and\s+(?:node\s+)?(\d+)\s+should\s+be\s+together\s+in\s+a?\s+route',
+                r'(?:at\s+least|minimum)\s+(\d+)\s+vehicles?\s+should\s+be\s+used.*(?:and|also|additionally).*node\s+(\d+)\s+and\s+node\s+(\d+)\s+should\s+be\s+together\s+in\s+a?\s+route',
+                r'(?:at\s+least|minimum)\s+(\d+)\s+vehicles?\s+should\s+be\s+used.*(?:and|also|additionally).*node\s+(\d+)\s+and\s+node\s+(\d+)\s+should\s+be\s+(?:together|grouped)\s+(?:in|on)\s+(?:a\s+|the\s+)?(?:same\s+)?route'
             ]
         }
 
@@ -419,10 +428,20 @@ Handle typos, informal language, and ambiguous cases gracefully.
             nodes = [int(n) for n in node_matches_in_constraint]
         
         # Determine the type of node constraint
-        if "not be served together" in original_prompt.lower() or "different routes" in original_prompt.lower():
+        if "not be served together" in original_prompt.lower() or "different routes" in original_prompt.lower() or "be on different" in original_prompt.lower():
             constraint_subtype = "vehicle_count_and_separation"
             node_constraint_type = "separation"
-        elif "served together" in original_prompt.lower() or "same route" in original_prompt.lower():
+        elif ("served together" in original_prompt.lower() or 
+              "same route" in original_prompt.lower() or 
+              "in same route" in original_prompt.lower() or 
+              "on same route" in original_prompt.lower() or
+              "be in same" in original_prompt.lower() or
+              "be on same" in original_prompt.lower() or
+              "together in a route" in original_prompt.lower() or
+              "together in route" in original_prompt.lower() or
+              "be together in" in original_prompt.lower() or
+              "grouped in" in original_prompt.lower() or
+              "grouped on" in original_prompt.lower()):
             constraint_subtype = "vehicle_count_and_grouping"
             node_constraint_type = "grouping"
         else:
