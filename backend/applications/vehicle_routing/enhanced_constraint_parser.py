@@ -102,7 +102,11 @@ class EnhancedConstraintParser:
                 r'(?:at\s+least|minimum)\s+(\d+)\s+vehicles?\s+should\s+be\s+used[\s\S]*?node\s+(\d+)\s+and\s+(?:node\s+)?(\d+)\s+should\s+be\s+covered\s+under\s+(?:the\s+)?same\s+route',
                 r'(?:at\s+least|minimum)\s+(\d+)\s+vehicles?\s+should\s+be\s+used[\s\S]*?node\s+(\d+)\s+and\s+(?:node\s+)?(\d+)\s+should\s+be\s+(?:covered|handled|managed)\s+(?:under|by)\s+(?:the\s+)?same\s+route',
                 # Most flexible pattern that handles line breaks and any whitespace
-                r'(?:at\s+least|minimum)\s+(\d+)\s+vehicles?\s+should\s+be\s+used[\s\S]*?node\s+(\d+)\s+and\s+(?:node\s+)?(\d+)\s+should\s+be\s+covered\s+under\s+(?:the\s+)?same\s+route'
+                r'(?:at\s+least|minimum)\s+(\d+)\s+vehicles?\s+should\s+be\s+used[\s\S]*?node\s+(\d+)\s+and\s+(?:node\s+)?(\d+)\s+should\s+be\s+covered\s+under\s+(?:the\s+)?same\s+route',
+                # NEW PATTERN: "together in same route" (without "a")
+                r'(?:at\s+least|minimum)\s+(\d+)\s+vehicles?\s+should\s+be\s+used[\s\S]*?nodes?\s+(\d+)\s+and\s+(?:node\s+)?(\d+)\s+should\s+be\s+together\s+in\s+same\s+route',
+                # Additional flexible patterns for "together in same route"
+                r'(?:at\s+least|minimum)\s+(\d+)\s+vehicles?\s+should\s+be\s+used[\s\S]*?node\s+(\d+)\s+and\s+(?:node\s+)?(\d+)\s+should\s+be\s+together\s+in\s+(?:the\s+)?same\s+route'
             ]
         }
 
