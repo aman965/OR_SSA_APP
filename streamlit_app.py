@@ -23,12 +23,33 @@ backend_dir = Path(__file__).resolve().parent / "backend"
 sys.path.insert(0, str(frontend_dir))
 sys.path.insert(0, str(backend_dir))
 
-# Check if we're in Streamlit Cloud (no Django available)
-STREAMLIT_CLOUD_MODE = os.environ.get('STREAMLIT_SHARING_MODE') == 'true' or not os.path.exists(backend_dir / "manage.py")
+# More robust Streamlit Cloud detection
+def is_streamlit_cloud():
+    """Detect if running in Streamlit Cloud environment"""
+    # Check multiple indicators
+    cloud_indicators = [
+        os.environ.get('STREAMLIT_SHARING_MODE') == 'true',
+        os.environ.get('STREAMLIT_SERVER_HEADLESS') == 'true',
+        'streamlit.io' in os.environ.get('HOSTNAME', ''),
+        not os.path.exists(backend_dir / "manage.py"),
+        'STREAMLIT_CLOUD' in os.environ
+    ]
+    
+    # Also try to import Django to see if it's available
+    try:
+        import django
+        django_available = True
+    except ImportError:
+        django_available = False
+    
+    # If Django is not available, we're likely in Streamlit Cloud
+    return any(cloud_indicators) or not django_available
+
+STREAMLIT_CLOUD_MODE = is_streamlit_cloud()
 
 if STREAMLIT_CLOUD_MODE:
     # Streamlit Cloud mode - no Django, simplified functionality
-    st.sidebar.warning("🌐 Running in Streamlit Cloud mode - Some features may be limited")
+    st.sidebar.info("🌐 Streamlit Cloud Mode")
     
     # Import streamlit-only components
     try:

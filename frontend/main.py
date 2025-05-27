@@ -22,12 +22,33 @@ except ImportError:
     st.warning("⚠️ Backend components not fully available. Some features may be limited.")
 
 def main():
-    # Check if we're in Streamlit Cloud mode
-    STREAMLIT_CLOUD_MODE = os.environ.get('STREAMLIT_SHARING_MODE') == 'true' or not os.path.exists(os.path.join(os.path.dirname(__file__), '..', 'backend', 'manage.py'))
+    # More robust Streamlit Cloud detection
+    def is_streamlit_cloud():
+        """Detect if running in Streamlit Cloud environment"""
+        # Check multiple indicators
+        cloud_indicators = [
+            os.environ.get('STREAMLIT_SHARING_MODE') == 'true',
+            os.environ.get('STREAMLIT_SERVER_HEADLESS') == 'true',
+            'streamlit.io' in os.environ.get('HOSTNAME', ''),
+            not os.path.exists(os.path.join(os.path.dirname(__file__), '..', 'backend', 'manage.py')),
+            'STREAMLIT_CLOUD' in os.environ
+        ]
+        
+        # Also try to import Django to see if it's available
+        try:
+            import django
+            django_available = True
+        except ImportError:
+            django_available = False
+        
+        # If Django is not available, we're likely in Streamlit Cloud
+        return any(cloud_indicators) or not django_available
+    
+    STREAMLIT_CLOUD_MODE = is_streamlit_cloud()
     
     if STREAMLIT_CLOUD_MODE:
         # In Streamlit Cloud, redirect to simplified interface
-        st.sidebar.warning("🌐 Running in Streamlit Cloud mode")
+        st.sidebar.info("🌐 Streamlit Cloud Mode")
         
         # Sidebar navigation
         st.sidebar.title("🔧 OR SaaS Applications")
