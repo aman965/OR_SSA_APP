@@ -2,13 +2,7 @@
 # Run this app from the frontend directory using: streamlit run main_hybrid.py
 import streamlit as st
 
-# Set page config FIRST - before any other Streamlit commands
-st.set_page_config(
-    page_title="OR SaaS Application",
-    page_icon="🚛",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
+# Note: st.set_page_config() is now handled in streamlit_app.py to avoid conflicts
 
 import sys
 import os
