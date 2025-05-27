@@ -20,8 +20,16 @@ class Snapshot(models.Model):
         return self.name
 
 class Scenario(models.Model):
+    MODEL_TYPE_CHOICES = [
+        ('vrp', 'Vehicle Routing Problem'),
+        ('inventory', 'Inventory Optimization'),
+        ('scheduling', 'Scheduling'),
+        ('network_flow', 'Network Flow'),
+    ]
+    
     name = models.CharField(max_length=255)
     snapshot = models.ForeignKey(Snapshot, on_delete=models.CASCADE)
+    model_type = models.CharField(max_length=50, choices=MODEL_TYPE_CHOICES, default='vrp')
     param1 = models.FloatField()
     param2 = models.IntegerField()
     param3 = models.IntegerField()

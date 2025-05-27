@@ -1,0 +1,33 @@
+# Core Production Dependencies
+# These are required for the application to run
+
+# Web Framework
+Django==5.2.1
+streamlit==1.45.0
+djangorestframework==3.16.0
+django-cors-headers==4.7.0
+
+# Data Processing
+pandas==2.2.3
+numpy>=2.2.5
+openpyxl>=3.1.5
+xlrd>=2.0.0
+
+# Database
+SQLAlchemy==1.4.51
+
+# Optimization (Core)
+pulp>=2.7.0
+
+# AI/ML (Core)
+openai>=1.12.0
+tiktoken>=0.4.0
+
+# Utilities
+python-dotenv==1.1.0
+requests>=2.32.3
+pillow==11.2.1
+
+# Visualization (Core)
+plotly>=6.0.1
+folium>=0.14.0 

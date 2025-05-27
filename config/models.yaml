@@ -1,0 +1,80 @@
+# OR SaaS Application - Available Models Registry
+# This file defines all optimization models available in the system
+
+models:
+  vrp:
+    name: "Vehicle Routing Problem"
+    description: "Optimize vehicle routes for delivery/pickup operations"
+    icon: "🚛"
+    category: "logistics"
+    status: "active"
+    config_file: "backend/config/models/vrp_config.json"
+    implementation: "backend/models/vrp/"
+    priority: 1
+    tags: ["routing", "transportation", "logistics", "optimization"]
+    
+  inventory:
+    name: "Inventory Optimization"
+    description: "Optimize inventory levels and ordering policies"
+    icon: "📦"
+    category: "supply_chain"
+    status: "active"
+    config_file: "backend/config/models/inventory_config.json"
+    implementation: "backend/models/inventory/"
+    priority: 2
+    tags: ["inventory", "supply_chain", "cost_optimization", "eoq"]
+    
+  scheduling:
+    name: "Scheduling Optimization"
+    description: "Optimize resource and task scheduling"
+    icon: "📅"
+    category: "operations"
+    status: "planned"
+    config_file: "backend/config/models/scheduling_config.json"
+    implementation: "backend/models/scheduling/"
+    priority: 3
+    tags: ["scheduling", "resources", "time_management", "operations"]
+    
+  network_flow:
+    name: "Network Flow Optimization"
+    description: "Optimize flow through networks and transportation"
+    icon: "🌐"
+    category: "networks"
+    status: "planned"
+    config_file: "backend/config/models/network_flow_config.json"
+    implementation: "backend/models/network_flow/"
+    priority: 4
+    tags: ["network", "flow", "transportation", "graph_theory"]
+
+categories:
+  logistics:
+    name: "Logistics & Transportation"
+    description: "Models for optimizing transportation and logistics operations"
+    icon: "🚚"
+    
+  supply_chain:
+    name: "Supply Chain Management"
+    description: "Models for optimizing supply chain operations"
+    icon: "🏭"
+    
+  operations:
+    name: "Operations Management"
+    description: "Models for optimizing operational processes"
+    icon: "⚙️"
+    
+  networks:
+    name: "Network Optimization"
+    description: "Models for optimizing network flows and structures"
+    icon: "🔗"
+
+ui_config:
+  default_model: "vrp"
+  show_categories: true
+  show_status: true
+  show_descriptions: true
+  model_selection_style: "cards"  # "dropdown", "cards", "list"
+  
+development:
+  auto_reload_configs: true
+  show_debug_info: false
+  enable_model_validation: true 

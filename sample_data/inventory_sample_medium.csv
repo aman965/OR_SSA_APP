@@ -1,0 +1,21 @@
+item_id,demand,cost,lead_time,category,supplier
+ITEM_001,320,125.50,7,Electronics,TechSupply Co
+ITEM_002,185,45.30,5,Office,OfficeMax Ltd
+ITEM_003,450,28.75,10,Consumables,QuickStock Inc
+ITEM_004,165,189.90,14,Electronics,TechSupply Co
+ITEM_005,280,35.40,6,Consumables,QuickStock Inc
+ITEM_006,195,167.20,8,Tools,ToolMaster Pro
+ITEM_007,380,74.80,12,Office,OfficeMax Ltd
+ITEM_008,210,178.60,9,Tools,ToolMaster Pro
+ITEM_009,145,95.25,11,Electronics,TechSupply Co
+ITEM_010,225,52.10,7,Office,OfficeMax Ltd
+ITEM_011,165,38.90,9,Consumables,QuickStock Inc
+ITEM_012,305,142.75,13,Electronics,TechSupply Co
+ITEM_013,125,29.60,6,Consumables,QuickStock Inc
+ITEM_014,275,198.40,15,Tools,ToolMaster Pro
+ITEM_015,155,67.85,8,Office,OfficeMax Ltd
+ITEM_016,345,156.30,10,Electronics,TechSupply Co
+ITEM_017,95,41.20,7,Consumables,QuickStock Inc
+ITEM_018,265,187.90,12,Tools,ToolMaster Pro
+ITEM_019,175,58.75,9,Office,OfficeMax Ltd
+ITEM_020,235,134.60,11,Electronics,TechSupply Co 

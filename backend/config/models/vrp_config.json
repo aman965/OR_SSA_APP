@@ -1,0 +1,255 @@
+{
+  "type": "vrp",
+  "name": "Vehicle Routing Problem",
+  "description": "Optimize vehicle routes for delivery/pickup operations with capacity and distance constraints",
+  "icon": "🚛",
+  "version": "1.0.0",
+  "parameters": {
+    "capacity": {
+      "type": "float",
+      "label": "Vehicle Capacity",
+      "min": 0.01,
+      "max": 10000.0,
+      "default": 100.0,
+      "step": 0.1,
+      "help": "Maximum capacity per vehicle (units)",
+      "required": true
+    },
+    "vehicle_count": {
+      "type": "integer",
+      "label": "Available Vehicles",
+      "min": 1,
+      "max": 50,
+      "default": 3,
+      "step": 1,
+      "help": "Number of available vehicles",
+      "required": true
+    },
+    "max_distance": {
+      "type": "float",
+      "label": "Max Route Distance",
+      "min": 0,
+      "max": 100000.0,
+      "default": 1000.0,
+      "step": 1.0,
+      "help": "Maximum distance per route (optional constraint)",
+      "required": false
+    },
+    "depot_location": {
+      "type": "select",
+      "label": "Depot Location",
+      "options": ["auto_detect", "node_0", "custom"],
+      "default_index": 0,
+      "help": "How to determine the depot location",
+      "required": false
+    },
+    "optimization_objective": {
+      "type": "select",
+      "label": "Optimization Objective",
+      "options": ["minimize_distance", "minimize_time", "minimize_cost"],
+      "default_index": 0,
+      "help": "Primary optimization objective",
+      "required": false
+    },
+    "allow_partial_routes": {
+      "type": "boolean",
+      "label": "Allow Partial Routes",
+      "default": false,
+      "help": "Allow vehicles to serve partial customer sets",
+      "required": false
+    }
+  },
+  "data_requirements": {
+    "required_columns": ["x", "y"],
+    "optional_columns": ["demand", "time_window_start", "time_window_end", "service_time", "priority"],
+    "alternative_formats": [
+      {
+        "name": "distance_matrix",
+        "required_columns": ["distance_matrix"],
+        "description": "Pre-calculated distance matrix"
+      },
+      {
+        "name": "coordinates_with_demand",
+        "required_columns": ["x", "y", "demand"],
+        "description": "Coordinates with customer demands"
+      }
+    ],
+    "data_format": "coordinates_or_distance_matrix",
+    "min_rows": 3,
+    "max_rows": 1000,
+    "validation_rules": [
+      "All coordinates must be numeric",
+      "Demand values must be non-negative",
+      "At least one depot (node 0) required"
+    ]
+  },
+  "kpis": [
+    {
+      "name": "total_distance",
+      "label": "Total Distance",
+      "type": "numeric",
+      "format": "%.2f",
+      "unit": "units",
+      "description": "Total distance traveled by all vehicles",
+      "category": "efficiency"
+    },
+    {
+      "name": "vehicle_utilization",
+      "label": "Vehicle Utilization",
+      "type": "percentage",
+      "format": "%.1f%%",
+      "description": "Percentage of available vehicles used",
+      "category": "resource"
+    },
+    {
+      "name": "avg_route_distance",
+      "label": "Average Route Distance",
+      "type": "numeric",
+      "format": "%.2f",
+      "unit": "units",
+      "description": "Average distance per route",
+      "category": "efficiency"
+    },
+    {
+      "name": "capacity_utilization",
+      "label": "Capacity Utilization",
+      "type": "percentage",
+      "format": "%.1f%%",
+      "description": "Average capacity utilization across vehicles",
+      "category": "resource"
+    },
+    {
+      "name": "customers_served",
+      "label": "Customers Served",
+      "type": "integer",
+      "format": "%d",
+      "description": "Total number of customers served",
+      "category": "coverage"
+    },
+    {
+      "name": "routes_count",
+      "label": "Routes Created",
+      "type": "integer",
+      "format": "%d",
+      "description": "Number of routes created",
+      "category": "resource"
+    }
+  ],
+  "comparison_metrics": [
+    "total_distance",
+    "vehicles_used",
+    "avg_route_distance",
+    "customer_coverage",
+    "capacity_utilization",
+    "total_cost"
+  ],
+  "result_tabs": [
+    {
+      "name": "summary",
+      "label": "Solution Summary",
+      "type": "kpi_dashboard",
+      "description": "Key performance indicators and solution overview"
+    },
+    {
+      "name": "routes",
+      "label": "Route Details",
+      "type": "table",
+      "columns": [
+        {"name": "vehicle", "label": "Vehicle", "type": "string"},
+        {"name": "route", "label": "Route", "type": "list"},
+        {"name": "distance", "label": "Distance", "type": "numeric", "format": "%.2f"},
+        {"name": "customers", "label": "Customers", "type": "integer"},
+        {"name": "capacity_used", "label": "Capacity Used", "type": "numeric", "format": "%.1f"},
+        {"name": "utilization", "label": "Utilization %", "type": "percentage", "format": "%.1f%%"}
+      ],
+      "description": "Detailed breakdown of each vehicle route"
+    },
+    {
+      "name": "map",
+      "label": "Route Map",
+      "type": "map",
+      "visualization": "route_overlay",
+      "description": "Visual representation of routes on a map",
+      "config": {
+        "show_depot": true,
+        "show_customers": true,
+        "show_routes": true,
+        "color_by_vehicle": true
+      }
+    },
+    {
+      "name": "charts",
+      "label": "Analytics",
+      "type": "charts",
+      "charts": [
+        {
+          "type": "bar",
+          "title": "Distance by Vehicle",
+          "x_axis": "vehicle",
+          "y_axis": "distance"
+        },
+        {
+          "type": "pie",
+          "title": "Capacity Utilization",
+          "data": "capacity_breakdown"
+        },
+        {
+          "type": "histogram",
+          "title": "Route Length Distribution",
+          "data": "route_distances"
+        }
+      ],
+      "description": "Visual analytics and charts"
+    }
+  ],
+  "constraints": {
+    "supported_types": [
+      "vehicle_capacity",
+      "vehicle_count",
+      "distance_limit",
+      "time_windows",
+      "node_grouping",
+      "node_separation",
+      "vehicle_assignment"
+    ],
+    "natural_language": {
+      "enabled": true,
+      "llm_integration": true,
+      "fallback_patterns": true
+    }
+  },
+  "solver_options": {
+    "default_solver": "pulp_cbc",
+    "available_solvers": ["pulp_cbc", "ortools", "gurobi"],
+    "time_limit": 300,
+    "gap_tolerance": 0.01,
+    "threads": 1
+  },
+  "export_formats": [
+    {
+      "name": "solution_json",
+      "label": "Solution JSON",
+      "extension": ".json",
+      "description": "Complete solution in JSON format"
+    },
+    {
+      "name": "routes_csv",
+      "label": "Routes CSV",
+      "extension": ".csv", 
+      "description": "Route details in CSV format"
+    },
+    {
+      "name": "kpis_excel",
+      "label": "KPIs Excel",
+      "extension": ".xlsx",
+      "description": "KPIs and metrics in Excel format"
+    }
+  ],
+  "ui_config": {
+    "parameter_layout": "columns",
+    "parameter_columns": 3,
+    "show_advanced_options": false,
+    "constraint_input": "textarea",
+    "result_default_tab": "summary"
+  }
+} 

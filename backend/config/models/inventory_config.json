@@ -1,0 +1,335 @@
+{
+  "type": "inventory",
+  "name": "Inventory Optimization",
+  "description": "Optimize inventory levels, ordering policies, and safety stock to minimize costs while maintaining service levels",
+  "icon": "📦",
+  "version": "1.0.0",
+  "parameters": {
+    "holding_cost": {
+      "type": "float",
+      "label": "Holding Cost per Unit",
+      "min": 0.01,
+      "max": 1000.0,
+      "default": 1.0,
+      "step": 0.01,
+      "help": "Cost to hold one unit in inventory per period ($/unit/period)",
+      "required": true
+    },
+    "ordering_cost": {
+      "type": "float",
+      "label": "Ordering Cost",
+      "min": 0.01,
+      "max": 10000.0,
+      "default": 50.0,
+      "step": 0.1,
+      "help": "Fixed cost per order regardless of quantity ($)",
+      "required": true
+    },
+    "service_level": {
+      "type": "float",
+      "label": "Service Level",
+      "min": 0.5,
+      "max": 0.999,
+      "default": 0.95,
+      "step": 0.01,
+      "help": "Target service level (probability of not stocking out)",
+      "required": true
+    },
+    "demand_forecast": {
+      "type": "select",
+      "label": "Demand Forecast Method",
+      "options": ["constant", "linear_trend", "seasonal", "moving_average"],
+      "default_index": 0,
+      "help": "Method for forecasting future demand",
+      "required": false
+    },
+    "lead_time": {
+      "type": "integer",
+      "label": "Default Lead Time",
+      "min": 1,
+      "max": 365,
+      "default": 7,
+      "step": 1,
+      "help": "Default lead time in days (if not specified per item)",
+      "required": false
+    },
+    "review_period": {
+      "type": "integer",
+      "label": "Review Period",
+      "min": 1,
+      "max": 365,
+      "default": 30,
+      "step": 1,
+      "help": "How often to review inventory levels (days)",
+      "required": false
+    },
+    "stockout_cost": {
+      "type": "float",
+      "label": "Stockout Cost per Unit",
+      "min": 0.0,
+      "max": 10000.0,
+      "default": 10.0,
+      "step": 0.1,
+      "help": "Cost penalty for each unit of unmet demand ($/unit)",
+      "required": false
+    },
+    "max_inventory_value": {
+      "type": "float",
+      "label": "Max Inventory Value",
+      "min": 0.0,
+      "max": 10000000.0,
+      "default": 100000.0,
+      "step": 1000.0,
+      "help": "Maximum total inventory value constraint ($)",
+      "required": false
+    }
+  },
+  "data_requirements": {
+    "required_columns": ["item_id", "demand", "cost"],
+    "optional_columns": ["lead_time", "supplier", "category", "weight", "volume", "min_order_qty", "max_order_qty"],
+    "alternative_formats": [
+      {
+        "name": "demand_history",
+        "required_columns": ["item_id", "date", "demand"],
+        "description": "Historical demand data with dates"
+      },
+      {
+        "name": "item_master",
+        "required_columns": ["item_id", "avg_demand", "demand_std", "unit_cost"],
+        "description": "Item master with demand statistics"
+      }
+    ],
+    "data_format": "item_demand_cost",
+    "min_rows": 1,
+    "max_rows": 10000,
+    "validation_rules": [
+      "All demand values must be non-negative",
+      "All cost values must be positive",
+      "Item IDs must be unique",
+      "Lead times must be positive integers"
+    ]
+  },
+  "kpis": [
+    {
+      "name": "total_cost",
+      "label": "Total Annual Cost",
+      "type": "currency",
+      "format": "$%.2f",
+      "description": "Total annual cost including holding, ordering, and stockout costs",
+      "category": "cost"
+    },
+    {
+      "name": "holding_cost",
+      "label": "Annual Holding Cost",
+      "type": "currency",
+      "format": "$%.2f",
+      "description": "Annual cost of holding inventory",
+      "category": "cost"
+    },
+    {
+      "name": "ordering_cost",
+      "label": "Annual Ordering Cost",
+      "type": "currency",
+      "format": "$%.2f",
+      "description": "Annual cost of placing orders",
+      "category": "cost"
+    },
+    {
+      "name": "service_level_achieved",
+      "label": "Service Level Achieved",
+      "type": "percentage",
+      "format": "%.1f%%",
+      "description": "Average service level across all items",
+      "category": "service"
+    },
+    {
+      "name": "inventory_turnover",
+      "label": "Inventory Turnover",
+      "type": "numeric",
+      "format": "%.2f",
+      "description": "Annual demand divided by average inventory",
+      "category": "efficiency"
+    },
+    {
+      "name": "total_inventory_value",
+      "label": "Total Inventory Value",
+      "type": "currency",
+      "format": "$%.2f",
+      "description": "Total value of inventory on hand",
+      "category": "investment"
+    },
+    {
+      "name": "items_optimized",
+      "label": "Items Optimized",
+      "type": "integer",
+      "format": "%d",
+      "description": "Number of items included in optimization",
+      "category": "coverage"
+    },
+    {
+      "name": "avg_order_frequency",
+      "label": "Average Order Frequency",
+      "type": "numeric",
+      "format": "%.1f",
+      "unit": "orders/year",
+      "description": "Average number of orders per item per year",
+      "category": "efficiency"
+    }
+  ],
+  "comparison_metrics": [
+    "total_cost",
+    "holding_cost",
+    "ordering_cost",
+    "service_level_achieved",
+    "inventory_turnover",
+    "total_inventory_value"
+  ],
+  "result_tabs": [
+    {
+      "name": "summary",
+      "label": "Cost Summary",
+      "type": "kpi_dashboard",
+      "description": "Key cost metrics and performance indicators"
+    },
+    {
+      "name": "policy",
+      "label": "Ordering Policy",
+      "type": "table",
+      "columns": [
+        {"name": "item_id", "label": "Item ID", "type": "string"},
+        {"name": "eoq", "label": "Order Quantity", "type": "numeric", "format": "%.0f"},
+        {"name": "reorder_point", "label": "Reorder Point", "type": "numeric", "format": "%.0f"},
+        {"name": "safety_stock", "label": "Safety Stock", "type": "numeric", "format": "%.0f"},
+        {"name": "max_inventory", "label": "Max Inventory", "type": "numeric", "format": "%.0f"},
+        {"name": "order_frequency", "label": "Orders/Year", "type": "numeric", "format": "%.1f"},
+        {"name": "annual_cost", "label": "Annual Cost", "type": "currency", "format": "$%.2f"}
+      ],
+      "description": "Optimal ordering policy for each item"
+    },
+    {
+      "name": "forecast",
+      "label": "Demand Forecast",
+      "type": "charts",
+      "charts": [
+        {
+          "type": "line",
+          "title": "Demand Forecast by Item",
+          "x_axis": "period",
+          "y_axis": "demand"
+        },
+        {
+          "type": "bar",
+          "title": "Annual Demand by Item",
+          "x_axis": "item_id",
+          "y_axis": "annual_demand"
+        }
+      ],
+      "description": "Demand forecasting and trends"
+    },
+    {
+      "name": "costs",
+      "label": "Cost Analysis",
+      "type": "charts",
+      "charts": [
+        {
+          "type": "pie",
+          "title": "Cost Breakdown",
+          "data": "cost_components"
+        },
+        {
+          "type": "bar",
+          "title": "Cost by Item",
+          "x_axis": "item_id",
+          "y_axis": "total_cost"
+        },
+        {
+          "type": "scatter",
+          "title": "Holding vs Ordering Cost",
+          "x_axis": "holding_cost",
+          "y_axis": "ordering_cost"
+        }
+      ],
+      "description": "Cost analysis and breakdown"
+    },
+    {
+      "name": "inventory",
+      "label": "Inventory Levels",
+      "type": "charts",
+      "charts": [
+        {
+          "type": "bar",
+          "title": "Inventory Value by Item",
+          "x_axis": "item_id",
+          "y_axis": "inventory_value"
+        },
+        {
+          "type": "line",
+          "title": "Inventory Level Over Time",
+          "x_axis": "time",
+          "y_axis": "inventory_level"
+        },
+        {
+          "type": "histogram",
+          "title": "Safety Stock Distribution",
+          "data": "safety_stock_levels"
+        }
+      ],
+      "description": "Inventory level analysis and projections"
+    }
+  ],
+  "constraints": {
+    "supported_types": [
+      "max_inventory_value",
+      "min_service_level",
+      "max_order_frequency",
+      "supplier_constraints",
+      "storage_capacity",
+      "budget_constraints"
+    ],
+    "natural_language": {
+      "enabled": true,
+      "llm_integration": true,
+      "fallback_patterns": true
+    }
+  },
+  "solver_options": {
+    "default_solver": "analytical_eoq",
+    "available_solvers": ["analytical_eoq", "simulation", "optimization"],
+    "time_limit": 60,
+    "iterations": 1000,
+    "convergence_tolerance": 0.001
+  },
+  "export_formats": [
+    {
+      "name": "policy_json",
+      "label": "Ordering Policy JSON",
+      "extension": ".json",
+      "description": "Complete ordering policy in JSON format"
+    },
+    {
+      "name": "policy_csv",
+      "label": "Ordering Policy CSV",
+      "extension": ".csv",
+      "description": "Ordering policy in CSV format"
+    },
+    {
+      "name": "cost_analysis_excel",
+      "label": "Cost Analysis Excel",
+      "extension": ".xlsx",
+      "description": "Detailed cost analysis in Excel format"
+    },
+    {
+      "name": "inventory_plan",
+      "label": "Inventory Plan",
+      "extension": ".xlsx",
+      "description": "Complete inventory planning workbook"
+    }
+  ],
+  "ui_config": {
+    "parameter_layout": "columns",
+    "parameter_columns": 2,
+    "show_advanced_options": true,
+    "constraint_input": "textarea",
+    "result_default_tab": "summary"
+  }
+} 

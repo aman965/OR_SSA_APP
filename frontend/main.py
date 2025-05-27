@@ -12,6 +12,7 @@ st.set_page_config(
 
 import sys
 import os
+import pandas as pd
 from pathlib import Path
 
 # Add project root to Python path
@@ -589,14 +590,22 @@ def show_embedded_scenario_builder():
 
                 # Run the ENHANCED VRP solver with intelligent constraint parsing
                 try:
-                    solver_path = os.path.join(BACKEND_PATH, "solver", "vrp_solver_enhanced.py")
+                    # Determine which solver to use based on model type
+                    model_type = scenario.model_type if hasattr(scenario, 'model_type') else 'vrp'
                     
-                    # Fallback to original solver if enhanced version not available
-                    if not os.path.exists(solver_path):
-                        solver_path = os.path.join(BACKEND_PATH, "solver", "vrp_solver.py")
-                        st.session_state.global_logs.append("Using standard VRP solver (enhanced solver not found)")
+                    if model_type == 'inventory':
+                        solver_path = os.path.join(BACKEND_PATH, "solver", "inventory_solver.py")
+                        st.session_state.global_logs.append("Using inventory optimization solver")
                     else:
-                        st.session_state.global_logs.append("Using enhanced VRP solver with intelligent constraint parsing")
+                        # Default to VRP solver
+                        solver_path = os.path.join(BACKEND_PATH, "solver", "vrp_solver_enhanced.py")
+                        
+                        # Fallback to original solver if enhanced version not available
+                        if not os.path.exists(solver_path):
+                            solver_path = os.path.join(BACKEND_PATH, "solver", "vrp_solver.py")
+                            st.session_state.global_logs.append("Using standard VRP solver (enhanced solver not found)")
+                        else:
+                            st.session_state.global_logs.append("Using enhanced VRP solver with intelligent constraint parsing")
                     
                     # Prepare environment variables, including OpenAI API key if available
                     env = os.environ.copy()
@@ -871,15 +880,30 @@ def show_embedded_scenario_builder():
                     )
 
                     st.subheader("Parameters")
+                    
+                    # Determine if we're in inventory mode
+                    is_inventory_mode = 'active_inventory_tab' in st.session_state
+                    
                     cols_params = st.columns(3)
                     with cols_params[0]:
-                        param1_form = st.number_input("Capacity (Float > 0)", min_value=0.01, value=100.0, step=0.1, format="%.2f", help="Vehicle Capacity", key="embedded_p1_form")
-                        param4_form = st.toggle("P4 (Toggle)", value=False, help="Parameter 4", key="embedded_p4_form")
+                        if is_inventory_mode:
+                            param1_form = st.number_input("Holding Cost Rate (%)", min_value=0.01, value=20.0, step=0.1, format="%.2f", help="Annual holding cost as percentage of item value", key="embedded_p1_form")
+                            param4_form = st.toggle("Apply Max Inventory Constraint", value=False, help="Enable maximum inventory value constraint", key="embedded_p4_form")
+                        else:
+                            param1_form = st.number_input("Capacity (Float > 0)", min_value=0.01, value=100.0, step=0.1, format="%.2f", help="Vehicle Capacity", key="embedded_p1_form")
+                            param4_form = st.toggle("P4 (Toggle)", value=False, help="Parameter 4", key="embedded_p4_form")
                     with cols_params[1]:
-                        param2_form = st.number_input("Available Vehicles (Int ≥ 0)", min_value=0, value=3, step=1, help="Number of Available Vehicles", key="embedded_p2_form")
-                        param5_form = st.checkbox("P5 (Checkbox)", value=False, help="Parameter 5", key="embedded_p5_form")
+                        if is_inventory_mode:
+                            param2_form = st.number_input("Ordering Cost ($)", min_value=0, value=50, step=1, help="Fixed cost per order", key="embedded_p2_form")
+                            param5_form = st.checkbox("Use Safety Stock", value=True, help="Calculate and maintain safety stock", key="embedded_p5_form")
+                        else:
+                            param2_form = st.number_input("Available Vehicles (Int ≥ 0)", min_value=0, value=3, step=1, help="Number of Available Vehicles", key="embedded_p2_form")
+                            param5_form = st.checkbox("P5 (Checkbox)", value=False, help="Parameter 5", key="embedded_p5_form")
                     with cols_params[2]:
-                        param3_form = st.slider("P3 (0-100)", min_value=0, max_value=100, value=50, help="Parameter 3", key="embedded_p3_form")
+                        if is_inventory_mode:
+                            param3_form = st.slider("Service Level (%)", min_value=0, max_value=100, value=95, help="Target service level percentage", key="embedded_p3_form")
+                        else:
+                            param3_form = st.slider("P3 (0-100)", min_value=0, max_value=100, value=50, help="Parameter 3", key="embedded_p3_form")
 
                     st.subheader("GPT-based Constraint Tweak")
                     gpt_prompt_tweak_form = st.text_area(
@@ -899,9 +923,15 @@ def show_embedded_scenario_builder():
                                 st.warning(f"A scenario named '{scenario_name_form}' already exists for snapshot '{snapshot_obj_form.name}'. Please choose a different name.")
                             else:
                                 try:
+                                    # Determine model type based on current context
+                                    model_type = 'vrp'  # Default
+                                    if 'active_inventory_tab' in st.session_state:
+                                        model_type = 'inventory'
+                                    
                                     new_scenario = Scenario.objects.create(
                                         name=scenario_name_form,
                                         snapshot=snapshot_obj_form,
+                                        model_type=model_type,
                                         param1=param1_form,
                                         param2=param2_form,
                                         param3=param3_form,
@@ -911,7 +941,7 @@ def show_embedded_scenario_builder():
                                         status="created"
                                     )
                                     st.success(f"✅ Scenario '{scenario_name_form}' created successfully!")
-                                    st.session_state.global_logs.append(f"Created scenario: {scenario_name_form}")
+                                    st.session_state.global_logs.append(f"Created {model_type} scenario: {scenario_name_form}")
                                     
                                     # Clear selected snapshot
                                     if 'selected_snapshot_id' in st.session_state:
@@ -1261,129 +1291,203 @@ def show_embedded_view_results():
 
             # KPI Cards
             st.subheader("Key Performance Indicators")
-            kpi_cols = st.columns(4)
-            with kpi_cols[0]:
-                st.metric("Total Distance", f"{solution['total_distance']:.2f} km")
-            with kpi_cols[1]:
-                st.metric("Vehicles Used", str(solution['vehicle_count']))
-            with kpi_cols[2]:
-                total_stops = sum(len(route) - 2 for route in solution['routes'])
-                st.metric("Total Stops", str(total_stops))
-            with kpi_cols[3]:
-                avg_route_length = solution['total_distance'] / len(solution['routes'])
-                st.metric("Avg Route Length", f"{avg_route_length:.2f} km")
+            
+            # Determine model type from scenario
+            model_type = scenario.model_type if hasattr(scenario, 'model_type') else 'vrp'
+            
+            if model_type == 'inventory':
+                # Inventory KPIs
+                kpi_cols = st.columns(4)
+                with kpi_cols[0]:
+                    st.metric("Total Annual Cost", f"${solution.get('total_cost', 0):,.2f}")
+                with kpi_cols[1]:
+                    st.metric("Total Inventory Value", f"${solution.get('total_inventory_value', 0):,.2f}")
+                with kpi_cols[2]:
+                    st.metric("Items Optimized", str(solution.get('num_items', 0)))
+                with kpi_cols[3]:
+                    st.metric("Service Level", f"{solution.get('service_level', 0)*100:.1f}%")
+            else:
+                # VRP KPIs
+                kpi_cols = st.columns(4)
+                with kpi_cols[0]:
+                    st.metric("Total Distance", f"{solution['total_distance']:.2f} km")
+                with kpi_cols[1]:
+                    st.metric("Vehicles Used", str(solution['vehicle_count']))
+                with kpi_cols[2]:
+                    total_stops = sum(len(route) - 2 for route in solution['routes'])
+                    st.metric("Total Stops", str(total_stops))
+                with kpi_cols[3]:
+                    avg_route_length = solution['total_distance'] / len(solution['routes'])
+                    st.metric("Avg Route Length", f"{avg_route_length:.2f} km")
 
-            # Load demand data for route calculations
-            try:
-                dataset_path = os.path.join(MEDIA_ROOT, scenario.snapshot.linked_upload.file.name)
-                demand_df = pd.read_csv(dataset_path)
-                demand_dict = {}
-                if 'demand' in demand_df.columns:
-                    demand_dict = dict(zip(demand_df.index, demand_df['demand']))
+            # Model-specific detailed results
+            if model_type == 'inventory':
+                # Inventory-specific results
+                st.subheader("Inventory Policy Details")
+                
+                # Load inventory items
+                if 'items' in solution:
+                    items_df = pd.DataFrame(solution['items'])
+                    
+                    # Display key metrics
+                    col1, col2, col3 = st.columns(3)
+                    with col1:
+                        st.metric("Total Items", len(items_df))
+                    with col2:
+                        total_ordering_cost = items_df['ordering_cost'].sum()
+                        st.metric("Total Ordering Cost", f"${total_ordering_cost:,.2f}")
+                    with col3:
+                        total_holding_cost = items_df['holding_cost'].sum()
+                        st.metric("Total Holding Cost", f"${total_holding_cost:,.2f}")
+                    
+                    # Display policy table
+                    st.dataframe(items_df[['item_id', 'demand', 'unit_cost', 'eoq', 'safety_stock', 'reorder_point', 'total_cost']], use_container_width=True)
+                    
+                    # Visualizations
+                    st.subheader("Cost Analysis")
+                    viz_cols = st.columns(2)
+                    
+                    with viz_cols[0]:
+                        # Cost breakdown by item
+                        fig_cost = px.bar(
+                            items_df.head(20),
+                            x='item_id',
+                            y='total_cost',
+                            title="Total Cost by Item (Top 20)",
+                            color='total_cost',
+                            color_continuous_scale="Viridis"
+                        )
+                        fig_cost.update_xaxes(tickangle=45)
+                        st.plotly_chart(fig_cost, use_container_width=True)
+                    
+                    with viz_cols[1]:
+                        # EOQ vs Demand scatter
+                        fig_eoq = px.scatter(
+                            items_df,
+                            x='demand',
+                            y='eoq',
+                            size='total_cost',
+                            color='category' if 'category' in items_df.columns else None,
+                            title="EOQ vs Demand",
+                            hover_data=['item_id']
+                        )
+                        st.plotly_chart(fig_eoq, use_container_width=True)
                 else:
-                    st.warning("No demand column found in dataset")
-            except Exception as e:
-                st.warning(f"Could not load demand data: {e}")
-                demand_dict = {}
-
-            # Enhanced Routes Table with Load/Demand
-            st.subheader("Route Details")
-            try:
-                route_rows = []
-                for i, route in enumerate(solution.get("routes", []), 1):
-                    route_id = f"R{i}"
-                    if isinstance(route, dict):
-                        stops = len(route.get("stops", [])) - 2 if len(route.get("stops", [])) > 2 else 0
-                        distance = round(route.get("distance", 0), 2)
-                        duration = round(route.get("duration", 0), 2)
-                        stop_sequence = route.get("stops", [])
-                        sequence = " → ".join(str(node) for node in stop_sequence)
+                    st.warning("No detailed item data available in solution")
+                    
+            else:
+                # VRP-specific results (existing code)
+                # Load demand data for route calculations
+                try:
+                    dataset_path = os.path.join(MEDIA_ROOT, scenario.snapshot.linked_upload.file.name)
+                    demand_df = pd.read_csv(dataset_path)
+                    demand_dict = {}
+                    if 'demand' in demand_df.columns:
+                        demand_dict = dict(zip(demand_df.index, demand_df['demand']))
                     else:
-                        stops = len(route) - 2 if len(route) > 2 else 0
-                        distance = None
-                        duration = None
-                        stop_sequence = route
-                        sequence = " → ".join(str(node) for node in route)
-                    
-                    # Calculate total load/demand for this route
-                    total_load = 0
-                    if demand_dict:
-                        customer_stops = [stop for stop in stop_sequence if stop != 0]
-                        total_load = sum(demand_dict.get(stop, 0) for stop in customer_stops)
-                    
-                    route_rows.append({
-                        "Route ID": route_id,
-                        "Stops": stops,
-                        "Total Load": total_load if demand_dict else "N/A",
-                        "Distance (km)": distance,
-                        "Duration (min)": duration,
-                        "Sequence": sequence
-                    })
-                
-                route_df = pd.DataFrame(route_rows)
-                st.dataframe(route_df, use_container_width=True)
-                
-                # Load utilization metrics
-                if demand_dict:
-                    total_demand = sum(demand_dict.get(i, 0) for i in demand_dict.keys() if i != 0)
-                    vehicle_capacity = scenario.param1
-                    
-                    st.subheader("📊 Load Analysis")
-                    load_cols = st.columns(3)
-                    with load_cols[0]:
-                        st.metric("Total Demand", f"{total_demand} units")
-                    with load_cols[1]:
-                        max_load_per_route = max([row["Total Load"] for row in route_rows if row["Total Load"] != "N/A"], default=0)
-                        st.metric("Max Route Load", f"{max_load_per_route} units")
-                    with load_cols[2]:
-                        if vehicle_capacity and max_load_per_route:
-                            utilization = (max_load_per_route / vehicle_capacity) * 100
-                            st.metric("Max Utilization", f"{utilization:.1f}%")
-                        else:
-                            st.metric("Max Utilization", "N/A")
-                            
-            except Exception as e:
-                st.error(f"⚠️ Error loading Route Details: {e}")
+                        st.warning("No demand column found in dataset")
+                except Exception as e:
+                    st.warning(f"Could not load demand data: {e}")
+                    demand_dict = {}
 
-            # Enhanced Visualizations
-            st.subheader("Route Analysis")
-            viz_cols = st.columns(2)
-            
-            with viz_cols[0]:
-                # Distance per Route Bar Chart
-                fig_distance = px.bar(
-                    pd.DataFrame(route_rows),
-                    x="Route ID",
-                    y="Distance (km)",
-                    title="Distance per Route",
-                    color="Distance (km)",
-                    color_continuous_scale="Viridis"
-                )
-                st.plotly_chart(fig_distance, use_container_width=True)
-            
-            with viz_cols[1]:
-                # Load per Route Bar Chart (if demand data available)
-                if demand_dict:
-                    fig_load = px.bar(
-                        pd.DataFrame(route_rows),
-                        x="Route ID", 
-                        y="Total Load",
-                        title="Load per Route",
-                        color="Total Load",
-                        color_continuous_scale="Plasma"
-                    )
-                    st.plotly_chart(fig_load, use_container_width=True)
-                else:
-                    # Fallback to stops per route
-                    fig_stops = px.bar(
+                # Enhanced Routes Table with Load/Demand
+                st.subheader("Route Details")
+                try:
+                    route_rows = []
+                    for i, route in enumerate(solution.get("routes", []), 1):
+                        route_id = f"R{i}"
+                        if isinstance(route, dict):
+                            stops = len(route.get("stops", [])) - 2 if len(route.get("stops", [])) > 2 else 0
+                            distance = round(route.get("distance", 0), 2)
+                            duration = round(route.get("duration", 0), 2)
+                            stop_sequence = route.get("stops", [])
+                            sequence = " → ".join(str(node) for node in stop_sequence)
+                        else:
+                            stops = len(route) - 2 if len(route) > 2 else 0
+                            distance = None
+                            duration = None
+                            stop_sequence = route
+                            sequence = " → ".join(str(node) for node in route)
+                        
+                        # Calculate total load/demand for this route
+                        total_load = 0
+                        if demand_dict:
+                            customer_stops = [stop for stop in stop_sequence if stop != 0]
+                            total_load = sum(demand_dict.get(stop, 0) for stop in customer_stops)
+                        
+                        route_rows.append({
+                            "Route ID": route_id,
+                            "Stops": stops,
+                            "Total Load": total_load if demand_dict else "N/A",
+                            "Distance (km)": distance,
+                            "Duration (min)": duration,
+                            "Sequence": sequence
+                        })
+                    
+                    route_df = pd.DataFrame(route_rows)
+                    st.dataframe(route_df, use_container_width=True)
+                    
+                    # Load utilization metrics
+                    if demand_dict:
+                        total_demand = sum(demand_dict.get(i, 0) for i in demand_dict.keys() if i != 0)
+                        vehicle_capacity = scenario.param1
+                        
+                        st.subheader("📊 Load Analysis")
+                        load_cols = st.columns(3)
+                        with load_cols[0]:
+                            st.metric("Total Demand", f"{total_demand} units")
+                        with load_cols[1]:
+                            max_load_per_route = max([row["Total Load"] for row in route_rows if row["Total Load"] != "N/A"], default=0)
+                            st.metric("Max Route Load", f"{max_load_per_route} units")
+                        with load_cols[2]:
+                            if vehicle_capacity and max_load_per_route:
+                                utilization = (max_load_per_route / vehicle_capacity) * 100
+                                st.metric("Max Utilization", f"{utilization:.1f}%")
+                            else:
+                                st.metric("Max Utilization", "N/A")
+                                
+                except Exception as e:
+                    st.error(f"⚠️ Error loading Route Details: {e}")
+
+                # Enhanced Visualizations
+                st.subheader("Route Analysis")
+                viz_cols = st.columns(2)
+                
+                with viz_cols[0]:
+                    # Distance per Route Bar Chart
+                    fig_distance = px.bar(
                         pd.DataFrame(route_rows),
                         x="Route ID",
-                        y="Stops",
-                        title="Stops per Route",
-                        color="Stops",
-                        color_continuous_scale="Plasma"
+                        y="Distance (km)",
+                        title="Distance per Route",
+                        color="Distance (km)",
+                        color_continuous_scale="Viridis"
                     )
-                    st.plotly_chart(fig_stops, use_container_width=True)
+                    st.plotly_chart(fig_distance, use_container_width=True)
+                
+                with viz_cols[1]:
+                    # Load per Route Bar Chart (if demand data available)
+                    if demand_dict:
+                        fig_load = px.bar(
+                            pd.DataFrame(route_rows),
+                            x="Route ID", 
+                            y="Total Load",
+                            title="Load per Route",
+                            color="Total Load",
+                            color_continuous_scale="Plasma"
+                        )
+                        st.plotly_chart(fig_load, use_container_width=True)
+                    else:
+                        # Fallback to stops per route
+                        fig_stops = px.bar(
+                            pd.DataFrame(route_rows),
+                            x="Route ID",
+                            y="Stops",
+                            title="Stops per Route",
+                            color="Stops",
+                            color_continuous_scale="Plasma"
+                        )
+                        st.plotly_chart(fig_stops, use_container_width=True)
 
             # GPT-powered Solution Analysis
             st.subheader("🤖 GPT-powered Solution Analysis")
@@ -1619,10 +1723,15 @@ def show_embedded_compare_outputs():
                             
                             # Load and compare scenario data
                             comparison_data = []
+                            model_type = None  # Will be determined from first scenario
                             
                             for scenario_name in selected_scenarios:
                                 try:
                                     scenario = Scenario.objects.get(name=scenario_name, snapshot=selected_snapshot_obj)
+                                    
+                                    # Determine model type from first scenario
+                                    if model_type is None:
+                                        model_type = scenario.model_type if hasattr(scenario, 'model_type') else 'vrp'
                                     
                                     # Load solution data
                                     solution_path = os.path.join(MEDIA_ROOT, "scenarios", str(scenario.id), "outputs", "solution_summary.json")
@@ -1633,21 +1742,33 @@ def show_embedded_compare_outputs():
                                         with open(solution_path, 'r') as f:
                                             solution = json.load(f)
                                         
-                                        # Extract KPIs
-                                        routes = solution.get('routes', [])
-                                        total_routes = len(routes)
-                                        total_distance = float(solution.get('total_distance', 0))
-                                        customers_served = sum(len(r.get('stops', r)) - 2 for r in routes if isinstance(r, (dict, list)))
-                                        
-                                        comparison_data.append({
-                                            "Scenario": scenario_name,
-                                            "Total Distance (km)": round(total_distance, 2),
-                                            "Vehicles Used": total_routes,
-                                            "Customers Served": customers_served,
-                                            "Avg Route Length (km)": round(total_distance / total_routes, 2) if total_routes > 0 else 0,
-                                            "Parameters": f"P1:{scenario.param1}, P2:{scenario.param2}, P3:{scenario.param3}",
-                                            "Constraints": scenario.gpt_prompt if scenario.gpt_prompt else "None"
-                                        })
+                                        if model_type == 'inventory':
+                                            # Extract inventory KPIs
+                                            comparison_data.append({
+                                                "Scenario": scenario_name,
+                                                "Total Annual Cost": f"${solution.get('total_cost', 0):,.2f}",
+                                                "Inventory Value": f"${solution.get('total_inventory_value', 0):,.2f}",
+                                                "Items Optimized": solution.get('num_items', 0),
+                                                "Service Level": f"{solution.get('service_level', 0)*100:.1f}%",
+                                                "Parameters": f"Hold:{scenario.param1}%, Order:${scenario.param2}, SL:{scenario.param3}%",
+                                                "Constraints": scenario.gpt_prompt if scenario.gpt_prompt else "None"
+                                            })
+                                        else:
+                                            # Extract VRP KPIs
+                                            routes = solution.get('routes', [])
+                                            total_routes = len(routes)
+                                            total_distance = float(solution.get('total_distance', 0))
+                                            customers_served = sum(len(r.get('stops', r)) - 2 for r in routes if isinstance(r, (dict, list)))
+                                            
+                                            comparison_data.append({
+                                                "Scenario": scenario_name,
+                                                "Total Distance (km)": round(total_distance, 2),
+                                                "Vehicles Used": total_routes,
+                                                "Customers Served": customers_served,
+                                                "Avg Route Length (km)": round(total_distance / total_routes, 2) if total_routes > 0 else 0,
+                                                "Parameters": f"P1:{scenario.param1}, P2:{scenario.param2}, P3:{scenario.param3}",
+                                                "Constraints": scenario.gpt_prompt if scenario.gpt_prompt else "None"
+                                            })
                                     else:
                                         st.warning(f"Solution file not found for scenario '{scenario_name}'")
                                         
@@ -1663,104 +1784,226 @@ def show_embedded_compare_outputs():
                                 # Visualization charts
                                 st.subheader("📈 Performance Comparison")
                                 
-                                # Create comparison charts
+                                # Create comparison charts based on model type
                                 col1, col2 = st.columns(2)
                                 
-                                with col1:
-                                    # Total Distance comparison
-                                    fig_distance = px.bar(
-                                        comparison_df,
-                                        x="Scenario",
-                                        y="Total Distance (km)",
-                                        title="Total Distance Comparison",
-                                        color="Total Distance (km)",
-                                        color_continuous_scale="Viridis"
-                                    )
-                                    fig_distance.update_layout(showlegend=False)
-                                    st.plotly_chart(fig_distance, use_container_width=True)
-                                
-                                with col2:
-                                    # Vehicles Used comparison
-                                    fig_vehicles = px.bar(
-                                        comparison_df,
-                                        x="Scenario",
-                                        y="Vehicles Used",
-                                        title="Vehicles Used Comparison",
-                                        color="Vehicles Used",
-                                        color_continuous_scale="Plasma"
-                                    )
-                                    fig_vehicles.update_layout(showlegend=False)
-                                    st.plotly_chart(fig_vehicles, use_container_width=True)
-                                
-                                # Radar chart for multi-dimensional comparison
-                                st.subheader("🎯 Multi-Dimensional Performance Radar")
-                                
-                                # Normalize metrics for radar chart
-                                metrics = ["Total Distance (km)", "Vehicles Used", "Customers Served"]
-                                
-                                fig_radar = go.Figure()
-                                
-                                for _, row in comparison_df.iterrows():
-                                    values = []
-                                    for metric in metrics:
-                                        # Normalize to 0-100 scale (inverse for distance - lower is better)
-                                        if metric == "Total Distance (km)":
-                                            max_val = comparison_df[metric].max()
-                                            normalized = 100 - (row[metric] / max_val * 100)
-                                        else:
-                                            max_val = comparison_df[metric].max()
-                                            normalized = (row[metric] / max_val * 100) if max_val > 0 else 0
-                                        values.append(normalized)
+                                if model_type == 'inventory':
+                                    # Inventory-specific charts
+                                    with col1:
+                                        # Extract numeric values for plotting
+                                        cost_values = []
+                                        for row in comparison_data:
+                                            cost_str = row["Total Annual Cost"].replace('$', '').replace(',', '')
+                                            cost_values.append(float(cost_str))
+                                        
+                                        # Total Cost comparison
+                                        fig_cost = px.bar(
+                                            x=[row["Scenario"] for row in comparison_data],
+                                            y=cost_values,
+                                            title="Total Annual Cost Comparison",
+                                            labels={'x': 'Scenario', 'y': 'Total Annual Cost ($)'},
+                                            color=cost_values,
+                                            color_continuous_scale="Viridis"
+                                        )
+                                        fig_cost.update_layout(showlegend=False)
+                                        st.plotly_chart(fig_cost, use_container_width=True)
                                     
-                                    fig_radar.add_trace(go.Scatterpolar(
-                                        r=values + [values[0]],  # Close the polygon
-                                        theta=metrics + [metrics[0]],
-                                        fill='toself',
-                                        name=row["Scenario"]
-                                    ))
-                                
-                                fig_radar.update_layout(
-                                    polar=dict(
-                                        radialaxis=dict(
-                                            visible=True,
-                                            range=[0, 100]
-                                        )),
-                                    showlegend=True,
-                                    title="Performance Radar Chart (Higher is Better)"
-                                )
-                                
-                                st.plotly_chart(fig_radar, use_container_width=True)
-                                
-                                # Best performer analysis
-                                st.subheader("🏆 Performance Analysis")
-                                
-                                # Find best performers
-                                best_distance = comparison_df.loc[comparison_df["Total Distance (km)"].idxmin()]
-                                best_efficiency = comparison_df.loc[comparison_df["Vehicles Used"].idxmin()]
-                                best_coverage = comparison_df.loc[comparison_df["Customers Served"].idxmax()]
-                                
-                                col1, col2, col3 = st.columns(3)
-                                
-                                with col1:
-                                    st.metric(
-                                        "🚗 Shortest Distance",
-                                        f"{best_distance['Scenario']}",
-                                        f"{best_distance['Total Distance (km)']} km"
+                                    with col2:
+                                        # Extract inventory values
+                                        inv_values = []
+                                        for row in comparison_data:
+                                            inv_str = row["Inventory Value"].replace('$', '').replace(',', '')
+                                            inv_values.append(float(inv_str))
+                                        
+                                        # Inventory Value comparison
+                                        fig_inventory = px.bar(
+                                            x=[row["Scenario"] for row in comparison_data],
+                                            y=inv_values,
+                                            title="Total Inventory Value Comparison",
+                                            labels={'x': 'Scenario', 'y': 'Inventory Value ($)'},
+                                            color=inv_values,
+                                            color_continuous_scale="Plasma"
+                                        )
+                                        fig_inventory.update_layout(showlegend=False)
+                                        st.plotly_chart(fig_inventory, use_container_width=True)
+                                    
+                                    # Radar chart for inventory metrics
+                                    st.subheader("🎯 Multi-Dimensional Performance Radar")
+                                    
+                                    # Prepare data for radar chart
+                                    fig_radar = go.Figure()
+                                    
+                                    for row in comparison_data:
+                                        # Extract numeric values
+                                        cost = float(row["Total Annual Cost"].replace('$', '').replace(',', ''))
+                                        inv_value = float(row["Inventory Value"].replace('$', '').replace(',', ''))
+                                        service_level = float(row["Service Level"].replace('%', ''))
+                                        items = row["Items Optimized"]
+                                        
+                                        # Normalize values (inverse for cost - lower is better)
+                                        max_cost = max(float(r["Total Annual Cost"].replace('$', '').replace(',', '')) for r in comparison_data)
+                                        max_inv = max(float(r["Inventory Value"].replace('$', '').replace(',', '')) for r in comparison_data)
+                                        max_items = max(r["Items Optimized"] for r in comparison_data)
+                                        
+                                        normalized_cost = 100 - (cost / max_cost * 100) if max_cost > 0 else 100
+                                        normalized_inv = 100 - (inv_value / max_inv * 100) if max_inv > 0 else 100
+                                        normalized_service = service_level
+                                        normalized_items = (items / max_items * 100) if max_items > 0 else 0
+                                        
+                                        values = [normalized_cost, normalized_inv, normalized_service, normalized_items]
+                                        categories = ['Cost Efficiency', 'Inventory Efficiency', 'Service Level', 'Items Coverage']
+                                        
+                                        fig_radar.add_trace(go.Scatterpolar(
+                                            r=values + [values[0]],
+                                            theta=categories + [categories[0]],
+                                            fill='toself',
+                                            name=row["Scenario"]
+                                        ))
+                                    
+                                    fig_radar.update_layout(
+                                        polar=dict(
+                                            radialaxis=dict(
+                                                visible=True,
+                                                range=[0, 100]
+                                            )),
+                                        showlegend=True,
+                                        title="Inventory Performance Radar (Higher is Better)"
                                     )
-                                
-                                with col2:
-                                    st.metric(
-                                        "⚡ Most Efficient",
-                                        f"{best_efficiency['Scenario']}",
-                                        f"{best_efficiency['Vehicles Used']} vehicles"
+                                    
+                                    st.plotly_chart(fig_radar, use_container_width=True)
+                                    
+                                    # Best performer analysis for inventory
+                                    st.subheader("🏆 Performance Analysis")
+                                    
+                                    # Find best performers
+                                    costs = [float(row["Total Annual Cost"].replace('$', '').replace(',', '')) for row in comparison_data]
+                                    inv_values = [float(row["Inventory Value"].replace('$', '').replace(',', '')) for row in comparison_data]
+                                    service_levels = [float(row["Service Level"].replace('%', '')) for row in comparison_data]
+                                    
+                                    best_cost_idx = costs.index(min(costs))
+                                    best_inv_idx = inv_values.index(min(inv_values))
+                                    best_service_idx = service_levels.index(max(service_levels))
+                                    
+                                    col1, col2, col3 = st.columns(3)
+                                    
+                                    with col1:
+                                        st.metric(
+                                            "💰 Lowest Cost",
+                                            comparison_data[best_cost_idx]["Scenario"],
+                                            comparison_data[best_cost_idx]["Total Annual Cost"]
+                                        )
+                                    
+                                    with col2:
+                                        st.metric(
+                                            "📦 Lowest Inventory",
+                                            comparison_data[best_inv_idx]["Scenario"],
+                                            comparison_data[best_inv_idx]["Inventory Value"]
+                                        )
+                                    
+                                    with col3:
+                                        st.metric(
+                                            "⭐ Best Service",
+                                            comparison_data[best_service_idx]["Scenario"],
+                                            comparison_data[best_service_idx]["Service Level"]
+                                        )
+                                    
+                                else:
+                                    # VRP-specific charts (existing code)
+                                    with col1:
+                                        # Total Distance comparison
+                                        fig_distance = px.bar(
+                                            comparison_df,
+                                            x="Scenario",
+                                            y="Total Distance (km)",
+                                            title="Total Distance Comparison",
+                                            color="Total Distance (km)",
+                                            color_continuous_scale="Viridis"
+                                        )
+                                        fig_distance.update_layout(showlegend=False)
+                                        st.plotly_chart(fig_distance, use_container_width=True)
+                                    
+                                    with col2:
+                                        # Vehicles Used comparison
+                                        fig_vehicles = px.bar(
+                                            comparison_df,
+                                            x="Scenario",
+                                            y="Vehicles Used",
+                                            title="Vehicles Used Comparison",
+                                            color="Vehicles Used",
+                                            color_continuous_scale="Plasma"
+                                        )
+                                        fig_vehicles.update_layout(showlegend=False)
+                                        st.plotly_chart(fig_vehicles, use_container_width=True)
+                                    
+                                    # Radar chart for multi-dimensional comparison
+                                    st.subheader("🎯 Multi-Dimensional Performance Radar")
+                                    
+                                    # Normalize metrics for radar chart
+                                    metrics = ["Total Distance (km)", "Vehicles Used", "Customers Served"]
+                                    
+                                    fig_radar = go.Figure()
+                                    
+                                    for _, row in comparison_df.iterrows():
+                                        values = []
+                                        for metric in metrics:
+                                            # Normalize to 0-100 scale (inverse for distance - lower is better)
+                                            if metric == "Total Distance (km)":
+                                                max_val = comparison_df[metric].max()
+                                                normalized = 100 - (row[metric] / max_val * 100)
+                                            else:
+                                                max_val = comparison_df[metric].max()
+                                                normalized = (row[metric] / max_val * 100) if max_val > 0 else 0
+                                            values.append(normalized)
+                                        
+                                        fig_radar.add_trace(go.Scatterpolar(
+                                            r=values + [values[0]],  # Close the polygon
+                                            theta=metrics + [metrics[0]],
+                                            fill='toself',
+                                            name=row["Scenario"]
+                                        ))
+                                    
+                                    fig_radar.update_layout(
+                                        polar=dict(
+                                            radialaxis=dict(
+                                                visible=True,
+                                                range=[0, 100]
+                                            )),
+                                        showlegend=True,
+                                        title="Performance Radar Chart (Higher is Better)"
                                     )
-                                
-                                with col3:
-                                    st.metric(
-                                        "📈 Best Coverage",
-                                        f"{best_coverage['Scenario']}",
-                                        f"{best_coverage['Customers Served']} customers"
-                                    )
+                                    
+                                    st.plotly_chart(fig_radar, use_container_width=True)
+                                    
+                                    # Best performer analysis
+                                    st.subheader("🏆 Performance Analysis")
+                                    
+                                    # Find best performers
+                                    best_distance = comparison_df.loc[comparison_df["Total Distance (km)"].idxmin()]
+                                    best_efficiency = comparison_df.loc[comparison_df["Vehicles Used"].idxmin()]
+                                    best_coverage = comparison_df.loc[comparison_df["Customers Served"].idxmax()]
+                                    
+                                    col1, col2, col3 = st.columns(3)
+                                    
+                                    with col1:
+                                        st.metric(
+                                            "🚗 Shortest Distance",
+                                            f"{best_distance['Scenario']}",
+                                            f"{best_distance['Total Distance (km)']} km"
+                                        )
+                                    
+                                    with col2:
+                                        st.metric(
+                                            "⚡ Most Efficient",
+                                            f"{best_efficiency['Scenario']}",
+                                            f"{best_efficiency['Vehicles Used']} vehicles"
+                                        )
+                                    
+                                    with col3:
+                                        st.metric(
+                                            "📈 Best Coverage",
+                                            f"{best_coverage['Scenario']}",
+                                            f"{best_coverage['Customers Served']} customers"
+                                        )
                                 
                                 # Export comparison data
                                 st.subheader("💾 Export Results")
@@ -1800,39 +2043,100 @@ def show_embedded_compare_outputs():
         st.write("Basic comparison interface")
 
 def show_placeholder_application(app_name):
-    """Placeholder for future optimization models"""
-    st.title(f"{app_name}")
-    st.write(f"Welcome to the {app_name} optimization module")
+    """Show optimization applications - now with full inventory support"""
+    if app_name == "📦 Inventory Optimization":
+        show_inventory_function()  # Changed to use same workflow as VRP
+    else:
+        # Keep placeholder for other models
+        st.title(f"{app_name}")
+        st.write(f"Welcome to the {app_name} optimization module")
+        
+        st.info("🚧 This module is under development and will be available in future updates.")
+        
+        # Show similar structure but non-functional
+        st.markdown("### 📋 Planned Features")
+        
+        features = {
+            "📅 Scheduling": [
+                "Resource scheduling optimization",
+                "Task assignment and sequencing", 
+                "Capacity planning",
+                "Timeline optimization"
+            ],
+            "🌐 Network Flow": [
+                "Network flow optimization",
+                "Transportation problems",
+                "Supply chain optimization",
+                "Distribution planning"
+            ]
+        }
+        
+        if app_name in features:
+            for feature in features[app_name]:
+                st.write(f"• {feature}")
+
+def show_inventory_function():
+    """Show inventory optimization with same workflow as VRP"""
+    st.title("📦 Inventory Optimization")
+    st.write("Optimize inventory levels, ordering policies, and safety stock to minimize costs while maintaining service levels")
     
-    st.info("🚧 This module is under development and will be available in future updates.")
+    # Get current tab from URL query parameters
+    query_params = st.query_params
+    current_tab = query_params.get("tab", "snapshots")  # Default to snapshots
     
-    # Show similar structure but non-functional
-    st.markdown("### 📋 Planned Features")
-    
-    features = {
-        "📅 Scheduling": [
-            "Resource scheduling optimization",
-            "Task assignment and sequencing", 
-            "Capacity planning",
-            "Timeline optimization"
-        ],
-        "📦 Inventory Optimization": [
-            "Inventory level optimization",
-            "Reorder point calculation",
-            "Safety stock management",
-            "Demand forecasting"
-        ],
-        "🌐 Network Flow": [
-            "Network flow optimization",
-            "Transportation problems",
-            "Supply chain optimization",
-            "Distribution planning"
-        ]
+    # Map tab names to indices
+    tab_mapping = {
+        "data_manager": 0,
+        "snapshots": 1,
+        "scenario_builder": 2,
+        "view_results": 3,
+        "compare_outputs": 4
     }
     
-    if app_name in features:
-        for feature in features[app_name]:
-            st.write(f"• {feature}")
+    # Set active tab based on URL or session state
+    if current_tab in tab_mapping:
+        st.session_state.active_inventory_tab = tab_mapping[current_tab]
+    elif 'active_inventory_tab' not in st.session_state:
+        st.session_state.active_inventory_tab = 1  # Default to Snapshots tab
+    
+    # Check for tab switching requests
+    if 'switch_to_tab' in st.session_state:
+        if st.session_state.switch_to_tab == 'scenario_builder':
+            st.session_state.active_inventory_tab = 2
+            st.query_params.tab = "scenario_builder"
+        elif st.session_state.switch_to_tab == 'view_results':
+            st.session_state.active_inventory_tab = 3
+            st.query_params.tab = "view_results"
+        del st.session_state.switch_to_tab
+    
+    # Create custom tab buttons
+    tab_cols = st.columns(5)
+    tab_names = ["📊 Data Manager", "📸 Snapshots", "🏗️ Scenario Builder", "📈 View Results", "⚖️ Compare Outputs"]
+    tab_keys = ["data_manager", "snapshots", "scenario_builder", "view_results", "compare_outputs"]
+    
+    for i, (col, tab_name, tab_key) in enumerate(zip(tab_cols, tab_names, tab_keys)):
+        with col:
+            if st.session_state.active_inventory_tab == i:
+                st.markdown(f"**🔹 {tab_name}**")
+            else:
+                if st.button(tab_name, key=f"inv_tab_{i}"):
+                    st.session_state.active_inventory_tab = i
+                    st.query_params.tab = tab_key
+                    st.rerun()
+    
+    st.markdown("---")
+    
+    # Show content based on active tab
+    if st.session_state.active_inventory_tab == 0:
+        show_embedded_data_manager()  # Reuse the same data manager
+    elif st.session_state.active_inventory_tab == 1:
+        show_embedded_snapshots()  # Reuse the same snapshots
+    elif st.session_state.active_inventory_tab == 2:
+        show_embedded_scenario_builder()  # Reuse the same scenario builder
+    elif st.session_state.active_inventory_tab == 3:
+        show_embedded_view_results()  # Reuse the same view results
+    elif st.session_state.active_inventory_tab == 4:
+        show_embedded_compare_outputs()  # Reuse the same compare outputs
 
 if __name__ == "__main__":
     main() 
