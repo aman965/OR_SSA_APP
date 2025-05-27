@@ -22,6 +22,47 @@ except ImportError:
     st.warning("⚠️ Backend components not fully available. Some features may be limited.")
 
 def main():
+    # Check if we're in Streamlit Cloud mode
+    STREAMLIT_CLOUD_MODE = os.environ.get('STREAMLIT_SHARING_MODE') == 'true' or not os.path.exists(os.path.join(os.path.dirname(__file__), '..', 'backend', 'manage.py'))
+    
+    if STREAMLIT_CLOUD_MODE:
+        # In Streamlit Cloud, redirect to simplified interface
+        st.sidebar.warning("🌐 Running in Streamlit Cloud mode")
+        
+        # Sidebar navigation
+        st.sidebar.title("🔧 OR SaaS Applications")
+        st.sidebar.markdown("---")
+        
+        app_choice = st.sidebar.selectbox(
+            "Choose Optimization Model:",
+            [
+                "🏠 Home",
+                "📦 Inventory Optimization",
+                "🚛 Vehicle Routing Problem (Demo)",
+                "📅 Scheduling (Coming Soon)", 
+                "🌐 Network Flow (Coming Soon)"
+            ],
+            index=1  # Default to Inventory Optimization
+        )
+        
+        # Route to appropriate page
+        if app_choice == "🏠 Home":
+            show_home_page()
+        elif app_choice == "📦 Inventory Optimization":
+            show_inventory_optimization_streamlit()
+        elif app_choice == "🚛 Vehicle Routing Problem (Demo)":
+            st.title("🚛 Vehicle Routing Problem")
+            st.warning("⚠️ VRP functionality requires Django backend which is not available in Streamlit Cloud.")
+            st.info("💡 **Try our Inventory Optimization instead!** It's fully functional in Streamlit Cloud mode.")
+            
+            if st.button("Go to Inventory Optimization", type="primary"):
+                st.rerun()
+        else:
+            st.title(f"{app_choice}")
+            st.info("🚧 This module is under development.")
+        return
+    
+    # Original main() code for full deployment
     # Initialize database on first run
     if BACKEND_AVAILABLE and 'db_initialized' not in st.session_state:
         try:
