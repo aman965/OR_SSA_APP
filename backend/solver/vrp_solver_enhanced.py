@@ -21,12 +21,25 @@ try:
     
     # Try to import enhanced modules
     try:
+        print(f"[vrp_solver_enhanced] Attempting to import enhanced constraint modules...")
+        print(f"[vrp_solver_enhanced] Current sys.path: {sys.path}")
+        print(f"[vrp_solver_enhanced] Current working directory: {os.getcwd()}")
+        print(f"[vrp_solver_enhanced] Constraint module path: {constraint_module_path}")
+        
         from enhanced_constraint_parser import EnhancedConstraintParser, ParsedConstraint
+        print(f"[vrp_solver_enhanced] ✅ Successfully imported EnhancedConstraintParser")
+        
         from enhanced_constraint_applier import EnhancedConstraintApplier
+        print(f"[vrp_solver_enhanced] ✅ Successfully imported EnhancedConstraintApplier")
+        
         ENHANCED_CONSTRAINT_PARSING_AVAILABLE = True
-        print(f"[vrp_solver_enhanced] Enhanced constraint parsing system loaded successfully")
+        print(f"[vrp_solver_enhanced] ✅ Enhanced constraint parsing system loaded successfully")
     except ImportError as enhanced_import_error:
-        print(f"[vrp_solver_enhanced] Enhanced constraint parsing not available: {enhanced_import_error}")
+        print(f"[vrp_solver_enhanced] ❌ Enhanced constraint parsing not available: {enhanced_import_error}")
+        print(f"[vrp_solver_enhanced] ❌ Import error details: {type(enhanced_import_error).__name__}: {str(enhanced_import_error)}")
+        import traceback
+        print(f"[vrp_solver_enhanced] ❌ Full traceback:")
+        traceback.print_exc()
         ENHANCED_CONSTRAINT_PARSING_AVAILABLE = False
     
 except ImportError as e:
@@ -76,9 +89,9 @@ def parse_constraints_intelligently(gpt_prompt, scenario_params):
     
     log(f"Processing constraint prompt: '{gpt_prompt}'")
     
-    # Try enhanced constraint parsing first
+    # FORCE ENHANCED CONSTRAINT PARSING ONLY
     if ENHANCED_CONSTRAINT_PARSING_AVAILABLE:
-        log("Using enhanced constraint parsing system")
+        log("🚀 FORCING enhanced constraint parsing system (no fallback)")
         try:
             # Get OpenAI API key
             openai_api_key = os.environ.get('OPENAI_API_KEY')
@@ -117,8 +130,10 @@ def parse_constraints_intelligently(gpt_prompt, scenario_params):
             parsed_constraint = enhanced_parser.parse_constraint(gpt_prompt, scenario_params)
             
             if parsed_constraint:
-                log(f"Enhanced parsing successful: {parsed_constraint.constraint_type} ({parsed_constraint.complexity_level})")
-                log(f"Interpretation: {parsed_constraint.interpretation}")
+                log(f"✅ Enhanced parsing successful: {parsed_constraint.constraint_type} ({parsed_constraint.complexity_level})")
+                log(f"✅ Parsing method: {parsed_constraint.parsing_method}")
+                log(f"✅ Confidence: {parsed_constraint.confidence}")
+                log(f"✅ Interpretation: {parsed_constraint.interpretation}")
                 
                 # Convert to legacy format for compatibility with existing apply function
                 legacy_constraint = {
@@ -134,113 +149,23 @@ def parse_constraints_intelligently(gpt_prompt, scenario_params):
                     'enhanced_constraint': parsed_constraint  # Store the full enhanced constraint
                 }
                 
+                log(f"🎉 ENHANCED PARSING SUCCESSFUL - Using {parsed_constraint.parsing_method} with {parsed_constraint.confidence} confidence")
+                log(f"🚀 RETURNING ENHANCED CONSTRAINT - NO FALLBACK TO BASIC SYSTEM")
                 return [legacy_constraint]
             else:
-                log("Enhanced parsing failed, falling back to basic parsing")
+                log("❌ Enhanced parsing returned None - this should not happen with our patterns")
+                log("❌ CRITICAL ERROR: Enhanced parser failed unexpectedly")
+                return []
                 
         except Exception as e:
-            log(f"Error in enhanced constraint parsing: {e}")
-            log("Falling back to basic constraint parsing")
-    
-    # Fallback to basic constraint parsing if enhanced parsing is not available or fails
-    if not CONSTRAINT_PARSING_AVAILABLE:
-        log("Constraint parsing modules not available - skipping intelligent parsing")
-        return []
-    
-    log("Using basic constraint parsing system")
-    
-    try:
-        # Initialize basic parsing components
-        matcher = VRPConstraintMatcher()
-        converter = ConstraintConverter()
-        llm_parser = LLMConstraintParser(api_key=openai_api_key if 'openai_api_key' in locals() else None)
-        
-        # Confidence threshold (hidden from user)
-        confidence_threshold = 0.85
-        
-        parsed_constraints = []
-        
-        # Split prompt into individual constraints (simple approach)
-        constraint_sentences = [s.strip() for s in gpt_prompt.replace(',', '.').replace(';', '.').split('.') if s.strip()]
-        
-        for sentence in constraint_sentences:
-            log(f"Processing constraint sentence: '{sentence}'")
-            
-            # Try pattern matching first
-            pattern_result = matcher.match_constraint(sentence)
-            
-            if pattern_result:
-                confidence = calculate_pattern_confidence(pattern_result, sentence)
-                constraint_type, match_info = pattern_result
-                
-                log(f"Pattern match found: {constraint_type} (confidence: {confidence:.1%})")
-                
-                if confidence >= confidence_threshold:
-                    log("HIGH CONFIDENCE - Using pattern matching")
-                    
-                    # Convert constraint to mathematical form
-                    try:
-                        converter_func = getattr(converter, match_info['conversion_function'])
-                        mathematical_constraint = converter_func(match_info['parameters'], scenario_params)
-                        
-                        parsed_constraint = {
-                            'original_prompt': sentence,
-                            'constraint_type': constraint_type,
-                            'parameters': match_info['parameters'],
-                            'mathematical_format': mathematical_constraint,
-                            'parsing_method': 'pattern_matching',
-                            'confidence': confidence
-                        }
-                        parsed_constraints.append(parsed_constraint)
-                        log(f"Successfully parsed: {constraint_type}")
-                        
-                    except Exception as e:
-                        log(f"Error converting constraint: {e}")
-                        
-                else:
-                    log(f"LOW CONFIDENCE ({confidence:.1%}) - Using LLM fallback")
-                    
-                    if llm_parser.is_available():
-                        llm_result = llm_parser.parse_constraint(sentence, scenario_params)
-                        if llm_result:
-                            llm_result['original_prompt'] = sentence
-                            parsed_constraints.append(llm_result)
-                            log("LLM parsing successful")
-                        else:
-                            log("LLM parsing failed - using fallback")
-                            fallback_result = llm_parser._fallback_parse(sentence)
-                            fallback_result['original_prompt'] = sentence
-                            parsed_constraints.append(fallback_result)
-                    else:
-                        log("LLM not available - using enhanced fallback")
-                        fallback_result = llm_parser._fallback_parse(sentence)
-                        fallback_result['original_prompt'] = sentence
-                        parsed_constraints.append(fallback_result)
-            else:
-                log("No pattern match - using LLM/fallback")
-                
-                if llm_parser.is_available():
-                    llm_result = llm_parser.parse_constraint(sentence, scenario_params)
-                    if llm_result:
-                        llm_result['original_prompt'] = sentence
-                        parsed_constraints.append(llm_result)
-                        log("LLM parsing successful")
-                    else:
-                        log("LLM parsing failed - using fallback")
-                        fallback_result = llm_parser._fallback_parse(sentence)
-                        fallback_result['original_prompt'] = sentence
-                        parsed_constraints.append(fallback_result)
-                else:
-                    log("No LLM available - using enhanced fallback")
-                    fallback_result = llm_parser._fallback_parse(sentence)
-                    fallback_result['original_prompt'] = sentence
-                    parsed_constraints.append(fallback_result)
-        
-        log(f"Successfully parsed {len(parsed_constraints)} constraints using basic parsing")
-        return parsed_constraints
-        
-    except Exception as e:
-        log(f"Error in basic constraint parsing: {e}")
+            log(f"❌ CRITICAL ERROR in enhanced constraint parsing: {e}")
+            import traceback
+            log(f"❌ Traceback: {traceback.format_exc()}")
+            log("❌ ENHANCED PARSING FAILED - RETURNING EMPTY (NO FALLBACK)")
+            return []
+    else:
+        log("❌ Enhanced constraint parsing not available - CRITICAL ERROR")
+        log("❌ This should not happen - enhanced parsing should always be available")
         return []
 
 
@@ -266,12 +191,14 @@ def apply_constraints_to_model(prob, constraints, nodes, vehicle_count, vehicle_
             for constraint in constraints:
                 if 'enhanced_constraint' in constraint and constraint['enhanced_constraint']:
                     enhanced_constraints.append(constraint['enhanced_constraint'])
+                    log(f"✅ Found enhanced constraint: {constraint['enhanced_constraint'].constraint_type} ({constraint['enhanced_constraint'].parsing_method})")
                 else:
                     basic_constraints.append(constraint)
+                    log(f"⚠️ Found basic constraint: {constraint.get('constraint_type', 'unknown')}")
             
             # Apply enhanced constraints
             if enhanced_constraints:
-                log(f"Applying {len(enhanced_constraints)} enhanced constraints")
+                log(f"🚀 Applying {len(enhanced_constraints)} enhanced constraints")
                 enhanced_applier = EnhancedConstraintApplier()
                 
                 application_results = enhanced_applier.apply_constraints_to_model(
@@ -291,6 +218,8 @@ def apply_constraints_to_model(prob, constraints, nodes, vehicle_count, vehicle_
                 # Get constraint summary
                 summary = enhanced_applier.get_constraint_summary()
                 log(f"Constraint summary: {summary}")
+            else:
+                log("⚠️ No enhanced constraints found to apply")
             
             # Apply any remaining basic constraints using the legacy method
             if basic_constraints:
@@ -300,7 +229,9 @@ def apply_constraints_to_model(prob, constraints, nodes, vehicle_count, vehicle_
             return
             
         except Exception as e:
-            log(f"Error in enhanced constraint application: {e}")
+            log(f"❌ Error in enhanced constraint application: {e}")
+            import traceback
+            log(f"Traceback: {traceback.format_exc()}")
             log("Falling back to basic constraint application")
     
     # Fallback to basic constraint application
@@ -446,11 +377,19 @@ def build_and_solve_vrp(scenario, df, output_dir):
             for j in range(n):
                 if i != j:
                     dist_matrix[i][j] = ((df['x'][i] - df['x'][j])**2 + (df['y'][i] - df['y'][j])**2)**0.5
+    elif 'latitude' in df.columns and 'longitude' in df.columns:
+        log("Calculating distance matrix from latitude,longitude coordinates")
+        dist_matrix = [[0 for _ in range(n)] for _ in range(n)]
+        for i in range(n):
+            for j in range(n):
+                if i != j:
+                    # Simple Euclidean distance (for small areas, more accurate would be Haversine)
+                    dist_matrix[i][j] = ((df['latitude'][i] - df['latitude'][j])**2 + (df['longitude'][i] - df['longitude'][j])**2)**0.5
     else:
         if df.shape[1] >= n:
             dist_matrix = df.iloc[:, :n].values
         else:
-            raise ValueError(f"CSV does not have enough columns for distance matrix")
+            raise ValueError(f"CSV does not have enough columns for distance matrix. Expected 'x,y' or 'latitude,longitude' columns, or a full {n}x{n} distance matrix. Found columns: {list(df.columns)}")
 
     # Create the optimization model
     prob = LpProblem("VRP_Enhanced", LpMinimize)
@@ -546,14 +485,25 @@ def build_and_solve_vrp(scenario, df, output_dir):
             "total_distance": total_distance,
             "vehicle_count": int(sum(value(used_k[v]) > 0.5 for v in range(vehicle_count))),
             "routes": routes,
-            "applied_constraints": [
-                {
-                    "original": c['original_prompt'],
-                    "type": c['constraint_type'],
-                    "method": c.get('parsing_method', 'unknown')
-                } for c in parsed_constraints
-            ]
+            "applied_constraints": []
         }
+        
+        # Generate applied constraints info with correct parsing method
+        for c in parsed_constraints:
+            constraint_info = {
+                "original": c['original_prompt'],
+                "type": c['constraint_type']
+            }
+            
+            # Check if this is an enhanced constraint with correct parsing method
+            if 'enhanced_constraint' in c and c['enhanced_constraint']:
+                # Use the parsing method from the enhanced constraint
+                constraint_info["method"] = c['enhanced_constraint'].parsing_method
+            else:
+                # Use the parsing method from the legacy constraint
+                constraint_info["method"] = c.get('parsing_method', 'unknown')
+            
+            solution["applied_constraints"].append(constraint_info)
         
         # Save solution file in outputs directory (new location)
         solution_path_outputs = os.path.join(output_dir, "solution_summary.json")

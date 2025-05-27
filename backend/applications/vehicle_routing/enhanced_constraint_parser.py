@@ -97,7 +97,12 @@ class EnhancedConstraintParser:
                 # Additional patterns for "together in a route" variations
                 r'(?:at\s+least|minimum)\s+(\d+)\s+vehicles?\s+should\s+be\s+used.*(?:and|also|additionally).*nodes?\s+(\d+)\s+and\s+(?:node\s+)?(\d+)\s+should\s+be\s+together\s+in\s+a?\s+route',
                 r'(?:at\s+least|minimum)\s+(\d+)\s+vehicles?\s+should\s+be\s+used.*(?:and|also|additionally).*node\s+(\d+)\s+and\s+node\s+(\d+)\s+should\s+be\s+together\s+in\s+a?\s+route',
-                r'(?:at\s+least|minimum)\s+(\d+)\s+vehicles?\s+should\s+be\s+used.*(?:and|also|additionally).*node\s+(\d+)\s+and\s+node\s+(\d+)\s+should\s+be\s+(?:together|grouped)\s+(?:in|on)\s+(?:a\s+|the\s+)?(?:same\s+)?route'
+                r'(?:at\s+least|minimum)\s+(\d+)\s+vehicles?\s+should\s+be\s+used.*(?:and|also|additionally).*node\s+(\d+)\s+and\s+node\s+(\d+)\s+should\s+be\s+(?:together|grouped)\s+(?:in|on)\s+(?:a\s+|the\s+)?(?:same\s+)?route',
+                # New patterns for "covered under same route" variations with flexible whitespace
+                r'(?:at\s+least|minimum)\s+(\d+)\s+vehicles?\s+should\s+be\s+used[\s\S]*?node\s+(\d+)\s+and\s+(?:node\s+)?(\d+)\s+should\s+be\s+covered\s+under\s+(?:the\s+)?same\s+route',
+                r'(?:at\s+least|minimum)\s+(\d+)\s+vehicles?\s+should\s+be\s+used[\s\S]*?node\s+(\d+)\s+and\s+(?:node\s+)?(\d+)\s+should\s+be\s+(?:covered|handled|managed)\s+(?:under|by)\s+(?:the\s+)?same\s+route',
+                # Most flexible pattern that handles line breaks and any whitespace
+                r'(?:at\s+least|minimum)\s+(\d+)\s+vehicles?\s+should\s+be\s+used[\s\S]*?node\s+(\d+)\s+and\s+(?:node\s+)?(\d+)\s+should\s+be\s+covered\s+under\s+(?:the\s+)?same\s+route'
             ]
         }
 
@@ -233,37 +238,38 @@ Handle typos, informal language, and ambiguous cases gracefully.
         
         # Check for multi-part constraints first (most complex)
         for pattern in self.constraint_patterns['multi_part_constraints']:
-            match = re.search(pattern, prompt_lower)
+            # Use re.DOTALL to make . match newlines
+            match = re.search(pattern, prompt_lower, re.DOTALL)
             if match:
                 return self._parse_multi_part_constraint(match, prompt)
         
         # Check for node separation
         for pattern in self.constraint_patterns['node_separation']:
-            match = re.search(pattern, prompt_lower)
+            match = re.search(pattern, prompt_lower, re.DOTALL)
             if match:
                 return self._parse_node_separation(match, prompt)
         
         # Check for node grouping
         for pattern in self.constraint_patterns['node_grouping']:
-            match = re.search(pattern, prompt_lower)
+            match = re.search(pattern, prompt_lower, re.DOTALL)
             if match:
                 return self._parse_node_grouping(match, prompt)
         
         # Check for vehicle assignment
         for pattern in self.constraint_patterns['vehicle_assignment']:
-            match = re.search(pattern, prompt_lower)
+            match = re.search(pattern, prompt_lower, re.DOTALL)
             if match:
                 return self._parse_vehicle_assignment(match, prompt)
         
         # Check for route constraints
         for pattern in self.constraint_patterns['route_constraints']:
-            match = re.search(pattern, prompt_lower)
+            match = re.search(pattern, prompt_lower, re.DOTALL)
             if match:
                 return self._parse_route_constraint(match, prompt)
         
         # Check for priority constraints
         for pattern in self.constraint_patterns['priority_constraints']:
-            match = re.search(pattern, prompt_lower)
+            match = re.search(pattern, prompt_lower, re.DOTALL)
             if match:
                 return self._parse_priority_constraint(match, prompt)
         
@@ -441,7 +447,12 @@ Handle typos, informal language, and ambiguous cases gracefully.
               "together in route" in original_prompt.lower() or
               "be together in" in original_prompt.lower() or
               "grouped in" in original_prompt.lower() or
-              "grouped on" in original_prompt.lower()):
+              "grouped on" in original_prompt.lower() or
+              "covered under same route" in original_prompt.lower() or
+              "covered under the same route" in original_prompt.lower() or
+              "handled under same route" in original_prompt.lower() or
+              "managed under same route" in original_prompt.lower() or
+              "covered by same route" in original_prompt.lower()):
             constraint_subtype = "vehicle_count_and_grouping"
             node_constraint_type = "grouping"
         else:

@@ -132,29 +132,48 @@ def show_vrp_function():
     st.title("🚛 Vehicle Routing Problem Solver")
     st.write("Solve complex vehicle routing problems with natural language constraints")
     
-    # Initialize active tab in session state
-    if 'active_vrp_tab' not in st.session_state:
+    # Get current tab from URL query parameters
+    query_params = st.query_params
+    current_tab = query_params.get("tab", "snapshots")  # Default to snapshots
+    
+    # Map tab names to indices
+    tab_mapping = {
+        "data_manager": 0,
+        "snapshots": 1,
+        "scenario_builder": 2,
+        "view_results": 3,
+        "compare_outputs": 4
+    }
+    
+    # Set active tab based on URL or session state
+    if current_tab in tab_mapping:
+        st.session_state.active_vrp_tab = tab_mapping[current_tab]
+    elif 'active_vrp_tab' not in st.session_state:
         st.session_state.active_vrp_tab = 1  # Default to Snapshots tab
     
     # Check for tab switching requests
     if 'switch_to_tab' in st.session_state:
         if st.session_state.switch_to_tab == 'scenario_builder':
             st.session_state.active_vrp_tab = 2
+            st.query_params.tab = "scenario_builder"
         elif st.session_state.switch_to_tab == 'view_results':
             st.session_state.active_vrp_tab = 3
+            st.query_params.tab = "view_results"
         del st.session_state.switch_to_tab
     
     # Create custom tab buttons
     tab_cols = st.columns(5)
     tab_names = ["📊 Data Manager", "📸 Snapshots", "🏗️ Scenario Builder", "📈 View Results", "⚖️ Compare Outputs"]
+    tab_keys = ["data_manager", "snapshots", "scenario_builder", "view_results", "compare_outputs"]
     
-    for i, (col, tab_name) in enumerate(zip(tab_cols, tab_names)):
+    for i, (col, tab_name, tab_key) in enumerate(zip(tab_cols, tab_names, tab_keys)):
         with col:
             if st.session_state.active_vrp_tab == i:
                 st.markdown(f"**🔹 {tab_name}**")
             else:
                 if st.button(tab_name, key=f"tab_{i}"):
                     st.session_state.active_vrp_tab = i
+                    st.query_params.tab = tab_key
                     st.rerun()
     
     st.markdown("---")
@@ -430,6 +449,7 @@ def show_embedded_snapshots():
                         st.session_state.selected_snapshot_for_scenario_builder = snap.name
                         st.session_state.global_logs.append(f"Selected snapshot for scenario creation: {snap.name}")
                         st.session_state.active_vrp_tab = 2  # Trigger automatic tab switch
+                        st.query_params.tab = "scenario_builder"
                         st.success(f"✅ Switching to Scenario Builder...")
                         st.rerun()
                 
@@ -450,7 +470,9 @@ def show_embedded_snapshots():
                                     st.session_state.selected_scenario_for_results = scenario.name
                                     st.session_state.global_logs.append(f"Selected for results: {snap.name} - {scenario.name}")
                                     st.session_state.active_vrp_tab = 3  # Switch to View Results tab
+                                    st.query_params.tab = "view_results"
                                     st.success(f"✅ Switching to View Results for {scenario.name}...")
+                                    st.rerun()
                             elif scenario.status == "failed":
                                 st.button("Failed", disabled=True, help=scenario.reason or "No reason provided", key=f"embedded_fail_{snap.id}_{scenario.id}")
                             else:
@@ -786,6 +808,7 @@ def show_embedded_scenario_builder():
                     st.session_state["selected_snapshot_for_results"] = snapshot_name_for_redirect
                     st.session_state["selected_scenario_for_results"] = scenario_name_for_redirect
                     st.session_state.active_vrp_tab = 3  # Switch to View Results tab
+                    st.query_params.tab = "view_results"
                     st.info("✅ Scenario solved! Switching to View Results...")
                     time.sleep(1)
                     st.rerun()
@@ -850,10 +873,10 @@ def show_embedded_scenario_builder():
                     st.subheader("Parameters")
                     cols_params = st.columns(3)
                     with cols_params[0]:
-                        param1_form = st.number_input("P1 (Float > 0)", min_value=0.01, value=1.0, step=0.1, format="%.2f", help="Parameter 1", key="embedded_p1_form")
+                        param1_form = st.number_input("Capacity (Float > 0)", min_value=0.01, value=100.0, step=0.1, format="%.2f", help="Vehicle Capacity", key="embedded_p1_form")
                         param4_form = st.toggle("P4 (Toggle)", value=False, help="Parameter 4", key="embedded_p4_form")
                     with cols_params[1]:
-                        param2_form = st.number_input("P2 (Int ≥ 0)", min_value=0, value=0, step=1, help="Parameter 2", key="embedded_p2_form")
+                        param2_form = st.number_input("Available Vehicles (Int ≥ 0)", min_value=0, value=3, step=1, help="Number of Available Vehicles", key="embedded_p2_form")
                         param5_form = st.checkbox("P5 (Checkbox)", value=False, help="Parameter 5", key="embedded_p5_form")
                     with cols_params[2]:
                         param3_form = st.slider("P3 (0-100)", min_value=0, max_value=100, value=50, help="Parameter 3", key="embedded_p3_form")
@@ -995,6 +1018,7 @@ def show_embedded_scenario_builder():
                                 st.session_state.selected_snapshot_for_results = scenario.snapshot.name
                                 st.session_state.selected_scenario_for_results = scenario.name
                                 st.session_state.active_vrp_tab = 3  # Switch to View Results tab
+                                st.query_params.tab = "view_results"
                                 st.success(f"✅ Switching to View Results for {scenario.name}...")
                                 st.rerun()
                         else:
@@ -1147,6 +1171,7 @@ def show_embedded_view_results():
                     if 'selected_scenario_for_results' in st.session_state:
                         del st.session_state.selected_scenario_for_results
                     st.session_state.active_vrp_tab = 2  # Switch to Scenario Builder tab
+                    st.query_params.tab = "scenario_builder"
                     st.rerun()
                 return
 
@@ -1179,6 +1204,7 @@ def show_embedded_view_results():
                 if 'selected_scenario_for_results' in st.session_state:
                     del st.session_state.selected_scenario_for_results
                 st.session_state.active_vrp_tab = 2  # Switch to Scenario Builder tab
+                st.query_params.tab = "scenario_builder"
                 st.rerun()
 
             # Scenario Info

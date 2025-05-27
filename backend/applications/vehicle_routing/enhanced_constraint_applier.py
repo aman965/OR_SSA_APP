@@ -247,14 +247,38 @@ class EnhancedConstraintApplier:
         ), f"NodeGrouping_OnlyOne_{node1}_{node2}_{constraint_id}"
         constraints_added += 1
         
-        print(f"[Enhanced Applier] Applied STRONG node grouping: nodes {node1} and {node2} must be on same route")
-        print(f"[Enhanced Applier] Added {constraints_added} mathematical constraints for strong grouping")
+        # Method 4: ABSOLUTE ENFORCEMENT - Add penalty constraints with very high coefficients
+        # Create penalty variables for violations
+        penalty_vars = {}
+        for k in range(vehicle_count):
+            for other_k in range(vehicle_count):
+                if k != other_k:
+                    penalty_vars[f"{k}_{other_k}"] = LpVariable(f"Penalty_{node1}_{node2}_V{k}_V{other_k}_{constraint_id}", cat=LpBinary)
+                    
+                    # If node1 is on vehicle k and node2 is on vehicle other_k, penalty = 1
+                    prob += (
+                        penalty_vars[f"{k}_{other_k}"] >= 
+                        lpSum(x[i, node1, k] for i in nodes if i != node1) + 
+                        lpSum(x[i, node2, other_k] for i in nodes if i != node2) - 1
+                    ), f"NodeGrouping_PenaltyTrigger_{node1}_{node2}_V{k}_V{other_k}_{constraint_id}"
+                    constraints_added += 1
+        
+        # Add penalty to objective function (this will be handled by the solver)
+        # The penalty sum should be 0 for a valid solution
+        prob += (
+            lpSum(penalty_vars[key] for key in penalty_vars) == 0
+        ), f"NodeGrouping_NoPenalty_{node1}_{node2}_{constraint_id}"
+        constraints_added += 1
+        
+        print(f"[Enhanced Applier] Applied ULTRA-STRONG node grouping: nodes {node1} and {node2} must be on same route")
+        print(f"[Enhanced Applier] Added {constraints_added} mathematical constraints for ULTRA-STRONG grouping")
+        print(f"[Enhanced Applier] Penalty enforcement ensures absolute compliance")
         
         return {
             "success": True,
             "constraint_type": "node_grouping",
             "mathematical_constraints_added": constraints_added,
-            "details": f"Nodes {node1} and {node2} grouped with STRONG constraints ({constraints_added} total)"
+            "details": f"Nodes {node1} and {node2} grouped with ULTRA-STRONG constraints ({constraints_added} total)"
         }
     
     def _apply_vehicle_assignment(self, prob, constraint: ParsedConstraint, nodes, 
