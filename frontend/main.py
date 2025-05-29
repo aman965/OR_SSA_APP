@@ -189,9 +189,30 @@ def show_vrp_function():
     st.title("🚛 Vehicle Routing Problem Solver")
     st.write("Solve complex vehicle routing problems with natural language constraints")
     
+    # Global CSS for full-width layout with small margins
+    st.markdown("""
+        <style>
+        /* Full width layout for all pages */
+        .block-container {
+            padding-left: 1rem;
+            padding-right: 1rem;
+            max-width: 100%;
+        }
+        /* Additional styles for better appearance */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 8px;
+        }
+        .stTabs [data-baseweb="tab"] {
+            height: 50px;
+            padding-left: 20px;
+            padding-right: 20px;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
     # Get current tab from URL query parameters
     query_params = st.query_params
-    current_tab = query_params.get("tab", "snapshots")  # Default to snapshots
+    current_tab = query_params.get("tab", "data_manager")  # Default to data_manager instead of snapshots
     
     # Map tab names to indices
     tab_mapping = {
@@ -206,7 +227,7 @@ def show_vrp_function():
     if current_tab in tab_mapping:
         st.session_state.active_vrp_tab = tab_mapping[current_tab]
     elif 'active_vrp_tab' not in st.session_state:
-        st.session_state.active_vrp_tab = 1  # Default to Snapshots tab
+        st.session_state.active_vrp_tab = 0  # Default to Data Manager tab
     
     # Check for tab switching requests
     if 'switch_to_tab' in st.session_state:
@@ -512,14 +533,22 @@ def show_embedded_snapshots():
                 
                 # List scenarios for this snapshot
                 scenarios = snap.scenario_set.all().order_by("-created_at")
-                if scenarios:
+                if scenarios.exists():
                     st.markdown("### Scenarios")
                     for scenario in scenarios:
                         col1, col2, col3 = st.columns([3, 1, 2])
                         with col1:
                             st.markdown(f"**{scenario.name}**")
                         with col2:
-                            st.markdown(f"Status: `{scenario.status}`")
+                            # Status with more space
+                            if scenario.status == "solved":
+                                st.success("✅ solved")
+                            elif scenario.status == "failed":
+                                st.error("❌ failed")
+                            elif scenario.status == "solving":
+                                st.warning("⏳ solving")
+                            else:
+                                st.info("🔵 created")
                         with col3:
                             if scenario.status == "solved":
                                 if st.button(f"View Results", key=f"embedded_view_{snap.id}_{scenario.id}"):
@@ -1053,85 +1082,162 @@ def show_embedded_scenario_builder():
         st.subheader(f"Found {scenarios.count()} Scenarios")
         
         if scenarios.exists():
-            # Create scenario table headers
-            header_cols = st.columns([3, 2, 1.5, 2, 2])
-            with header_cols[0]:
-                st.markdown("**Scenario Name**")
-            with header_cols[1]:
-                st.markdown("**Snapshot**")
-            with header_cols[2]:
-                st.markdown("**Status**")
-            with header_cols[3]:
-                st.markdown("**Actions**")
-            with header_cols[4]:
-                st.markdown("**Details**")
+            # Create scenario table with better styling
+            st.markdown("""
+                <style>
+                .scenario-details {
+                    font-size: 0.85em;
+                    line-height: 1.4;
+                }
+                .scenario-error {
+                    background-color: rgba(255, 75, 75, 0.1);
+                    padding: 0.5rem;
+                    border-radius: 0.25rem;
+                    margin-top: 0.5rem;
+                }
+                </style>
+            """, unsafe_allow_html=True)
             
-            st.markdown("---")
-            
-            # Display scenarios
-            for scenario in scenarios:
-                cols = st.columns([3, 2, 1.5, 2, 2])
+            # Use container for full width
+            with st.container():
+                # Create scenario table headers with adjusted column widths
+                # Adjusted to give more space to status column: [2, 2, 2, 2.5, 5.5]
+                header_cols = st.columns([2, 2, 2, 2.5, 5.5])
+                with header_cols[0]:
+                    st.markdown("**Scenario Name**")
+                with header_cols[1]:
+                    st.markdown("**Snapshot**")
+                with header_cols[2]:
+                    st.markdown("**Status**")
+                with header_cols[3]:
+                    st.markdown("**Actions**")
+                with header_cols[4]:
+                    st.markdown("**Details**")
                 
-                with cols[0]:
-                    st.write(scenario.name)
-                with cols[1]:
-                    st.write(scenario.snapshot.name)
-                with cols[2]:
-                    if scenario.status == "solved":
-                        st.success("● solved")
-                    elif scenario.status == "failed":
-                        st.error("● failed")
-                    elif scenario.status == "solving":
-                        st.warning("● solving")
-                    else:
-                        st.info("● created")
-                with cols[3]:
-                    # Actions column
-                    action_col1, action_col2 = st.columns(2)
-                    with action_col1:
+                st.markdown("---")
+                
+                # Display scenarios
+                for scenario in scenarios:
+                    # First row with scenario information
+                    cols = st.columns([2, 2, 2, 2.5, 5.5])
+                    
+                    with cols[0]:
+                        st.write(scenario.name)
+                    with cols[1]:
+                        st.write(scenario.snapshot.name)
+                    with cols[2]:
+                        # Status with more space
+                        if scenario.status == "solved":
+                            st.success("✅ solved")
+                        elif scenario.status == "failed":
+                            st.error("❌ failed")
+                        elif scenario.status == "solving":
+                            st.warning("⏳ solving")
+                        else:
+                            st.info("🔵 created")
+                    with cols[3]:
+                        # Single action button based on status
                         if scenario.status in ["created", "failed"]:
-                            if st.button("🚀 Run Model", key=f"sb_run_{scenario.id}"):
-                                # Call the run model function
+                            if st.button("🚀 Run", key=f"sb_run_{scenario.id}", 
+                                       help="Run Model", use_container_width=True):
                                 run_model_for_scenario(scenario.id)
                         elif scenario.status == "solving":
-                            st.button("⏳ Running", disabled=True, key=f"sb_running_{scenario.id}")
-                        else:
-                            st.button("✅ Solved", disabled=True, key=f"sb_solved_{scenario.id}")
-                    
-                    with action_col2:
-                        if scenario.status == "solved":
-                            if st.button("📊 View Results", key=f"sb_view_{scenario.id}"):
+                            st.button("⏳ Running", disabled=True, key=f"sb_running_{scenario.id}",
+                                    help="Model is currently running", use_container_width=True)
+                        elif scenario.status == "solved":
+                            if st.button("📊 View", key=f"sb_view_{scenario.id}",
+                                       help="View Results", use_container_width=True):
                                 st.session_state.selected_snapshot_for_results = scenario.snapshot.name
                                 st.session_state.selected_scenario_for_results = scenario.name
-                                st.session_state.active_vrp_tab = 3  # Switch to View Results tab
+                                st.session_state.active_vrp_tab = 3
                                 st.query_params.tab = "view_results"
                                 st.success(f"✅ Switching to View Results for {scenario.name}...")
                                 st.rerun()
-                        else:
-                            st.button("📊 View Results", disabled=True, key=f"sb_view_disabled_{scenario.id}")
-                
-                with cols[4]:
-                    # Details dropdown
-                    details_options = ["Show Details", "Parameters", "Constraints", "Logs"]
-                    selected_detail = st.selectbox(
-                        "Details",
-                        options=details_options,
-                        key=f"sb_details_{scenario.id}"
-                    )
                     
-                    if selected_detail == "Parameters":
-                        st.info(f"P1: {scenario.param1}, P2: {scenario.param2}, P3: {scenario.param3}")
-                    elif selected_detail == "Constraints":
-                        if scenario.gpt_prompt:
-                            st.info(f"Constraints: {scenario.gpt_prompt}")
-                        else:
-                            st.info("No constraints specified")
-                    elif selected_detail == "Logs":
-                        st.info(f"Created: {scenario.created_at.strftime('%Y-%m-%d %H:%M')}")
-                        if scenario.reason:
-                            st.warning(f"Reason: {scenario.reason}")
-                
-                st.divider()
+                    with cols[4]:
+                        # Details in a clean, non-nested format
+                        with st.container():
+                            # Compact metadata display
+                            meta_parts = []
+                            meta_parts.append(f"📅 {scenario.created_at.strftime('%Y-%m-%d %H:%M')}")
+                            
+                            # Model type
+                            model_type = scenario.model_type if hasattr(scenario, 'model_type') else 'VRP'
+                            meta_parts.append(f"📦 {model_type.upper()}")
+                            
+                            # Parameters
+                            meta_parts.append(f"🚛 Cap: {scenario.param1}")
+                            meta_parts.append(f"🚗 Veh: {scenario.param2}")
+                            meta_parts.append(f"📏 P3: {scenario.param3}")
+                            
+                            st.markdown(
+                                f'<div class="scenario-details">{" | ".join(meta_parts)}</div>',
+                                unsafe_allow_html=True
+                            )
+                            
+                            # Constraints if present
+                            if scenario.gpt_prompt:
+                                constraint_text = scenario.gpt_prompt
+                                if len(constraint_text) > 120:
+                                    st.info(f"💬 {constraint_text[:120]}...", icon="💭")
+                                else:
+                                    st.info(f"💬 {constraint_text}", icon="💭")
+                            
+                            # Error display for failed scenarios
+                            if scenario.status == "failed" and scenario.reason:
+                                error_text = scenario.reason
+                                
+                                # Check if it's a long error
+                                if len(error_text) > 200:
+                                    # Create a toggle for full error
+                                    error_key = f"error_toggle_{scenario.id}"
+                                    if error_key not in st.session_state:
+                                        st.session_state[error_key] = False
+                                    
+                                    # Show preview
+                                    st.markdown(
+                                        f'<div class="scenario-error">⚠️ {error_text[:200]}...</div>',
+                                        unsafe_allow_html=True
+                                    )
+                                    
+                                    # Toggle button
+                                    if st.button(
+                                        "Show full error" if not st.session_state[error_key] else "Hide full error",
+                                        key=f"toggle_error_{scenario.id}",
+                                        type="secondary"
+                                    ):
+                                        st.session_state[error_key] = not st.session_state[error_key]
+                                else:
+                                    # Short error - show directly
+                                    st.markdown(
+                                        f'<div class="scenario-error">⚠️ {error_text}</div>',
+                                        unsafe_allow_html=True
+                                    )
+                    
+                    # Second row for full error display (spans all columns)
+                    if scenario.status == "failed" and scenario.reason and len(scenario.reason) > 200:
+                        error_key = f"error_toggle_{scenario.id}"
+                        if error_key in st.session_state and st.session_state[error_key]:
+                            # Full-width container for the error
+                            with st.container():
+                                st.markdown(
+                                    f"""
+                                    <div style="
+                                        background-color: rgba(255, 75, 75, 0.1);
+                                        border: 1px solid rgba(255, 75, 75, 0.3);
+                                        border-radius: 0.5rem;
+                                        padding: 1rem;
+                                        margin: 0.5rem 0 1rem 0;
+                                        width: 100%;
+                                    ">
+                                        <strong>Full Error Details:</strong><br/>
+                                        {scenario.reason.replace(chr(10), '<br/>')}
+                                    </div>
+                                    """,
+                                    unsafe_allow_html=True
+                                )
+                    
+                    st.divider()
         else:
             st.info("No scenarios found matching the selected filters.")
 
@@ -1176,7 +1282,7 @@ def show_embedded_view_results():
         os.environ.setdefault("DJANGO_SETTINGS_MODULE", "orsaas_backend.settings")
         django.setup()
         
-        from core.models import Scenario
+        from core.models import Scenario, Snapshot
         
         # Initialize logs
         if "global_logs" not in st.session_state:
@@ -1194,6 +1300,11 @@ def show_embedded_view_results():
 
         if not selected_snapshot or not selected_scenario:
             st.header("Select Scenario to View Results")
+            
+            # Add error handling message if available
+            error_msg = st.query_params.get('error')
+            if error_msg:
+                st.error(error_msg)
             
             # Two horizontal dropdowns for snapshot and scenario selection
             col1, col2 = st.columns(2)
@@ -1236,10 +1347,13 @@ def show_embedded_view_results():
                     return
             
             # Load Results button
-            if st.button("Load Results", key="embedded_load_results"):
+            if st.button("Load Results", key="embedded_load_results", type="primary", use_container_width=True):
                 st.session_state.selected_snapshot_for_results = selected_snapshot_name
                 st.session_state.selected_scenario_for_results = selected_scenario_name
                 st.rerun()
+            
+            st.markdown("---")
+            st.info("ℹ️ You can also navigate to this page from the Scenario Builder by clicking 'View Results' on any solved scenario.")
             return
 
         try:
@@ -2136,9 +2250,30 @@ def show_inventory_function():
     st.title("📦 Inventory Optimization")
     st.write("Optimize inventory levels, ordering policies, and safety stock to minimize costs while maintaining service levels")
     
+    # Global CSS for full-width layout with small margins
+    st.markdown("""
+        <style>
+        /* Full width layout for all pages */
+        .block-container {
+            padding-left: 1rem;
+            padding-right: 1rem;
+            max-width: 100%;
+        }
+        /* Additional styles for better appearance */
+        .stTabs [data-baseweb="tab-list"] {
+            gap: 8px;
+        }
+        .stTabs [data-baseweb="tab"] {
+            height: 50px;
+            padding-left: 20px;
+            padding-right: 20px;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+    
     # Get current tab from URL query parameters
     query_params = st.query_params
-    current_tab = query_params.get("tab", "snapshots")  # Default to snapshots
+    current_tab = query_params.get("tab", "data_manager")  # Default to data_manager instead of snapshots
     
     # Map tab names to indices
     tab_mapping = {
@@ -2153,7 +2288,7 @@ def show_inventory_function():
     if current_tab in tab_mapping:
         st.session_state.active_inventory_tab = tab_mapping[current_tab]
     elif 'active_inventory_tab' not in st.session_state:
-        st.session_state.active_inventory_tab = 1  # Default to Snapshots tab
+        st.session_state.active_inventory_tab = 0  # Default to Data Manager tab
     
     # Check for tab switching requests
     if 'switch_to_tab' in st.session_state:
