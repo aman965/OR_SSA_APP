@@ -90,16 +90,27 @@ def main():
             with st.spinner("Initializing database..."):
                 init_db()
             st.session_state.db_initialized = True
-            st.sidebar.success("✅ Database initialized successfully")
         except Exception as e:
             st.sidebar.error("❌ Database initialization failed")
             st.sidebar.exception(e)
-
-    # Sidebar navigation with both model selection and page navigation
+    
+    # Always show sidebar navigation
     st.sidebar.title("🔧 OR SaaS Applications")
     st.sidebar.markdown("---")
-
-    # Main application selection dropdown
+    
+    # Check URL parameters to determine initial selection
+    query_params = st.query_params
+    url_model = query_params.get("model")
+    url_page = query_params.get("page")
+    
+    # Determine default index based on URL
+    default_index = 0  # Default to Home
+    if url_model == "vrp":
+        default_index = 1
+    elif url_model == "inventory":
+        default_index = 3
+    
+    # Main application selection dropdown - always visible
     app_choice = st.sidebar.selectbox(
         "Choose Optimization Model:",
         [
@@ -108,20 +119,59 @@ def main():
             "📅 Scheduling", 
             "📦 Inventory Optimization",
             "🌐 Network Flow"
-        ]
+        ],
+        index=default_index,
+        key="main_app_selector"
     )
-
-    # Show VRP sub-navigation when VRP is selected
-    if app_choice == "🚛 Vehicle Routing Problem":
-        # Remove the radio buttons and direct access buttons since we have horizontal tabs now
-        pass
-
-    # Route to appropriate page
+    
+    # Add a success message when database is initialized
+    if BACKEND_AVAILABLE and st.session_state.get('db_initialized'):
+        st.sidebar.success("✅ Database Ready")
+    
+    # Add helpful navigation info
+    st.sidebar.markdown("---")
+    st.sidebar.info("💡 **Tip:** You can switch between models anytime using the dropdown above")
+    
+    # Add current page info
+    if url_model and url_page:
+        page_names = {
+            "data-manager": "📊 Data Manager",
+            "snapshots": "📸 Snapshots",
+            "scenario-builder": "🏗️ Scenario Builder",
+            "view-results": "📈 View Results",
+            "compare-outputs": "⚖️ Compare Outputs"
+        }
+        current_page_name = page_names.get(url_page, url_page)
+        st.sidebar.markdown(f"**Current Page:** {current_page_name}")
+    
+    # Route to appropriate page based on selection
     if app_choice == "🏠 Home":
+        # Clear URL parameters when going home
+        st.query_params.clear()
         show_home_page()
     elif app_choice == "🚛 Vehicle Routing Problem":
+        # Update URL if not already set
+        if url_model != "vrp":
+            st.query_params.update({"model": "vrp", "page": url_page or "data-manager"})
+            # Reset view results selections when switching models
+            if 'selected_snapshot_for_results' in st.session_state:
+                del st.session_state.selected_snapshot_for_results
+            if 'selected_scenario_for_results' in st.session_state:
+                del st.session_state.selected_scenario_for_results
         show_vrp_function()
-    elif app_choice in ["📅 Scheduling", "📦 Inventory Optimization", "🌐 Network Flow"]:
+    elif app_choice == "📦 Inventory Optimization":
+        # Update URL if not already set
+        if url_model != "inventory":
+            st.query_params.update({"model": "inventory", "page": url_page or "data-manager"})
+            # Reset view results selections when switching models
+            if 'selected_snapshot_for_results' in st.session_state:
+                del st.session_state.selected_snapshot_for_results
+            if 'selected_scenario_for_results' in st.session_state:
+                del st.session_state.selected_scenario_for_results
+        show_inventory_function()
+    elif app_choice in ["📅 Scheduling", "🌐 Network Flow"]:
+        # Clear URL parameters for placeholder pages
+        st.query_params.clear()
         show_placeholder_application(app_choice)
 
 def show_home_page():
@@ -189,6 +239,10 @@ def show_vrp_function():
     st.title("🚛 Vehicle Routing Problem Solver")
     st.write("Solve complex vehicle routing problems with natural language constraints")
     
+    # Ensure sidebar is visible by default
+    if 'sidebar_state' not in st.session_state:
+        st.session_state.sidebar_state = 'expanded'
+    
     # Global CSS for full-width layout with small margins
     st.markdown("""
         <style>
@@ -210,22 +264,26 @@ def show_vrp_function():
         </style>
     """, unsafe_allow_html=True)
     
-    # Get current tab from URL query parameters
+    # Get current page from URL query parameters
     query_params = st.query_params
-    current_tab = query_params.get("tab", "data_manager")  # Default to data_manager instead of snapshots
+    current_page = query_params.get("page", "data-manager")  # Default to data-manager
     
-    # Map tab names to indices
-    tab_mapping = {
-        "data_manager": 0,
+    # Ensure model parameter is set
+    if query_params.get("model") != "vrp":
+        st.query_params.update({"model": "vrp", "page": current_page})
+    
+    # Map page names to indices
+    page_mapping = {
+        "data-manager": 0,
         "snapshots": 1,
-        "scenario_builder": 2,
-        "view_results": 3,
-        "compare_outputs": 4
+        "scenario-builder": 2,
+        "view-results": 3,
+        "compare-outputs": 4
     }
     
     # Set active tab based on URL or session state
-    if current_tab in tab_mapping:
-        st.session_state.active_vrp_tab = tab_mapping[current_tab]
+    if current_page in page_mapping:
+        st.session_state.active_vrp_tab = page_mapping[current_page]
     elif 'active_vrp_tab' not in st.session_state:
         st.session_state.active_vrp_tab = 0  # Default to Data Manager tab
     
@@ -233,25 +291,25 @@ def show_vrp_function():
     if 'switch_to_tab' in st.session_state:
         if st.session_state.switch_to_tab == 'scenario_builder':
             st.session_state.active_vrp_tab = 2
-            st.query_params.tab = "scenario_builder"
+            st.query_params.update({"model": "vrp", "page": "scenario-builder"})
         elif st.session_state.switch_to_tab == 'view_results':
             st.session_state.active_vrp_tab = 3
-            st.query_params.tab = "view_results"
+            st.query_params.update({"model": "vrp", "page": "view-results"})
         del st.session_state.switch_to_tab
     
     # Create custom tab buttons
     tab_cols = st.columns(5)
     tab_names = ["📊 Data Manager", "📸 Snapshots", "🏗️ Scenario Builder", "📈 View Results", "⚖️ Compare Outputs"]
-    tab_keys = ["data_manager", "snapshots", "scenario_builder", "view_results", "compare_outputs"]
+    page_keys = ["data-manager", "snapshots", "scenario-builder", "view-results", "compare-outputs"]
     
-    for i, (col, tab_name, tab_key) in enumerate(zip(tab_cols, tab_names, tab_keys)):
+    for i, (col, tab_name, page_key) in enumerate(zip(tab_cols, tab_names, page_keys)):
         with col:
             if st.session_state.active_vrp_tab == i:
                 st.markdown(f"**🔹 {tab_name}**")
             else:
-                if st.button(tab_name, key=f"tab_{i}"):
+                if st.button(tab_name, key=f"vrp_tab_{i}"):
                     st.session_state.active_vrp_tab = i
-                    st.query_params.tab = tab_key
+                    st.query_params.update({"model": "vrp", "page": page_key})
                     st.rerun()
     
     st.markdown("---")
@@ -443,6 +501,17 @@ def show_embedded_snapshots():
         if "global_logs" not in st.session_state:
             st.session_state.global_logs = ["Snapshots initialized."]
 
+        # Determine current model from URL or session state
+        query_params = st.query_params
+        current_model = query_params.get("model", "vrp")
+        
+        # If not in URL, check session state
+        if not current_model:
+            if 'active_inventory_tab' in st.session_state:
+                current_model = "inventory"
+            else:
+                current_model = "vrp"
+
         # Create Snapshot Section
         st.header("Create Snapshot")
         
@@ -479,7 +548,8 @@ def show_embedded_snapshots():
                     snapshot = Snapshot.objects.create(
                         name=snapshot_name,
                         linked_upload=upload_obj,
-                        description=description
+                        description=description,
+                        model_type=current_model  # Set model type based on current context
                     )
                     
                     try:
@@ -502,15 +572,18 @@ def show_embedded_snapshots():
                     except Exception as e:
                         st.session_state.global_logs.append(f"Error in snapshot file creation: {str(e)}")
                         
-                    st.success(f"Snapshot '{snapshot_name}' created successfully.")
-                    st.session_state.global_logs.append(f"Snapshot '{snapshot_name}' created.")
+                    st.success(f"Snapshot '{snapshot_name}' created successfully for {current_model.upper()} model.")
+                    st.session_state.global_logs.append(f"Snapshot '{snapshot_name}' created for {current_model}.")
                     st.rerun()
         else:
             st.warning("No datasets available. Please upload a dataset first in the Data Manager tab.")
 
-        # List Existing Snapshots
+        # List Existing Snapshots - Filter by current model
         st.header("Snapshots & Scenarios")
-        snapshots = Snapshot.objects.select_related("linked_upload").order_by("-created_at")
+        snapshots = Snapshot.objects.filter(model_type=current_model).select_related("linked_upload").order_by("-created_at")
+        
+        if not snapshots.exists():
+            st.info(f"No snapshots available for {current_model.upper()} model. Create one above.")
         
         for snap in snapshots:
             with st.expander(f"📦 {snap.name}"):
@@ -519,6 +592,7 @@ def show_embedded_snapshots():
                     st.markdown(f"**Linked Dataset:** {snap.linked_upload.name if snap.linked_upload else 'N/A'}")
                     st.markdown(f"**Created At:** {snap.created_at.strftime('%Y-%m-%d %H:%M:%S')}")
                     st.markdown(f"**Description:** {snap.description or 'No description provided'}")
+                    st.markdown(f"**Model Type:** {snap.model_type.upper()}")
                 
                 with col2:
                     if st.button(f"➕ Create Scenario", key=f"embedded_create_scenario_{snap.id}"):
@@ -526,12 +600,18 @@ def show_embedded_snapshots():
                         st.session_state.selected_snapshot_name = snap.name
                         st.session_state.selected_snapshot_for_scenario_builder = snap.name
                         st.session_state.global_logs.append(f"Selected snapshot for scenario creation: {snap.name}")
-                        st.session_state.active_vrp_tab = 2  # Trigger automatic tab switch
-                        st.query_params.tab = "scenario_builder"
+                        
+                        # Set the appropriate tab based on current model
+                        if current_model == "inventory":
+                            st.session_state.active_inventory_tab = 2
+                        else:
+                            st.session_state.active_vrp_tab = 2
+                        
+                        st.query_params.update({"model": current_model, "page": "scenario-builder"})
                         st.success(f"✅ Switching to Scenario Builder...")
                         st.rerun()
                 
-                # List scenarios for this snapshot
+                # List scenarios for this snapshot - they'll already be filtered by model
                 scenarios = snap.scenario_set.all().order_by("-created_at")
                 if scenarios.exists():
                     st.markdown("### Scenarios")
@@ -540,7 +620,7 @@ def show_embedded_snapshots():
                         with col1:
                             st.markdown(f"**{scenario.name}**")
                         with col2:
-                            # Status with more space
+                            # Status display
                             if scenario.status == "solved":
                                 st.success("✅ solved")
                             elif scenario.status == "failed":
@@ -555,8 +635,14 @@ def show_embedded_snapshots():
                                     st.session_state.selected_snapshot_for_results = snap.name
                                     st.session_state.selected_scenario_for_results = scenario.name
                                     st.session_state.global_logs.append(f"Selected for results: {snap.name} - {scenario.name}")
-                                    st.session_state.active_vrp_tab = 3  # Switch to View Results tab
-                                    st.query_params.tab = "view_results"
+                                    
+                                    # Set the appropriate tab based on current model
+                                    if current_model == "inventory":
+                                        st.session_state.active_inventory_tab = 3
+                                    else:
+                                        st.session_state.active_vrp_tab = 3
+                                    
+                                    st.query_params.update({"model": current_model, "page": "view-results"})
                                     st.success(f"✅ Switching to View Results for {scenario.name}...")
                                     st.rerun()
                             elif scenario.status == "failed":
@@ -613,6 +699,17 @@ def show_embedded_scenario_builder():
         # Initialize running scenario state
         if "running_scenario" not in st.session_state:
             st.session_state.running_scenario = None
+
+        # Determine current model from URL or session state
+        query_params = st.query_params
+        current_model = query_params.get("model", "vrp")
+        
+        # If not in URL, check session state
+        if not current_model:
+            if 'active_inventory_tab' in st.session_state:
+                current_model = "inventory"
+            else:
+                current_model = "vrp"
 
         # Try to import infeasibility explainer
         try:
@@ -679,8 +776,14 @@ def show_embedded_scenario_builder():
                     model_type = scenario.model_type if hasattr(scenario, 'model_type') else 'vrp'
                     
                     if model_type == 'inventory':
-                        solver_path = os.path.join(BACKEND_PATH, "solver", "inventory_solver.py")
-                        st.session_state.global_logs.append("Using inventory optimization solver")
+                        solver_path = os.path.join(BACKEND_PATH, "solver", "inventory_solver_enhanced.py")
+                        
+                        # Fallback to original solver if enhanced version not available
+                        if not os.path.exists(solver_path):
+                            solver_path = os.path.join(BACKEND_PATH, "solver", "inventory_solver.py")
+                            st.session_state.global_logs.append("Using standard inventory solver (enhanced solver not found)")
+                        else:
+                            st.session_state.global_logs.append("Using enhanced inventory solver with constraint parsing")
                     else:
                         # Default to VRP solver
                         solver_path = os.path.join(BACKEND_PATH, "solver", "vrp_solver_enhanced.py")
@@ -901,8 +1004,15 @@ def show_embedded_scenario_builder():
                 if redirect_to_results:
                     st.session_state["selected_snapshot_for_results"] = snapshot_name_for_redirect
                     st.session_state["selected_scenario_for_results"] = scenario_name_for_redirect
-                    st.session_state.active_vrp_tab = 3  # Switch to View Results tab
-                    st.query_params.tab = "view_results"
+                    
+                    # Determine model type and set appropriate tab
+                    model_type = scenario.model_type if hasattr(scenario, 'model_type') else 'vrp'
+                    if model_type == 'inventory':
+                        st.session_state.active_inventory_tab = 3
+                    else:
+                        st.session_state.active_vrp_tab = 3
+                    
+                    st.query_params.update({"model": model_type, "page": "view-results"})
                     st.info("✅ Scenario solved! Switching to View Results...")
                     time.sleep(1)
                     st.rerun()
@@ -919,10 +1029,11 @@ def show_embedded_scenario_builder():
                 st.info("The snapshot has been pre-selected for you. Fill in the details below to create your scenario.")
             
             try:
-                snapshots_qs = Snapshot.objects.order_by("-created_at")
+                # Filter snapshots by current model
+                snapshots_qs = Snapshot.objects.filter(model_type=current_model).order_by("-created_at")
                 snapshot_names = [s.name for s in snapshots_qs]
                 if not snapshot_names:
-                    st.warning("No snapshots found. Please create a snapshot first in the Snapshots tab.")
+                    st.warning(f"No snapshots found for {current_model.upper()} model. Please create a snapshot first in the Snapshots tab.")
                     selected_snapshot_name_form = None
                     snapshot_obj_form = None
                 else:
@@ -967,7 +1078,7 @@ def show_embedded_scenario_builder():
                     st.subheader("Parameters")
                     
                     # Determine if we're in inventory mode
-                    is_inventory_mode = 'active_inventory_tab' in st.session_state
+                    is_inventory_mode = current_model == 'inventory'
                     
                     cols_params = st.columns(3)
                     with cols_params[0]:
@@ -991,10 +1102,21 @@ def show_embedded_scenario_builder():
                             param3_form = st.slider("P3 (0-100)", min_value=0, max_value=100, value=50, help="Parameter 3", key="embedded_p3_form")
 
                     st.subheader("GPT-based Constraint Tweak")
+                    
+                    # Add inventory-specific help text
+                    if is_inventory_mode:
+                        help_text = """Enter any specific modifications or constraints for the inventory model. Examples:
+• ITEM001 safety stock should be <= 10
+• ITEM002 EOQ must be >= 50
+• ITEM003 inventory value <= 5000
+"""
+                    else:
+                        help_text = "Enter any specific modifications or constraints for the model using natural language."
+                    
                     gpt_prompt_tweak_form = st.text_area(
                         "Describe any custom model tweak (optional)",
                         height=100,
-                        help="Enter any specific modifications or constraints for the model using natural language.",
+                        help=help_text,
                         key="embedded_gpt_tweak_form"
                     )
 
@@ -1009,9 +1131,7 @@ def show_embedded_scenario_builder():
                             else:
                                 try:
                                     # Determine model type based on current context
-                                    model_type = 'vrp'  # Default
-                                    if 'active_inventory_tab' in st.session_state:
-                                        model_type = 'inventory'
+                                    model_type = current_model  # Use the already determined current_model
                                     
                                     new_scenario = Scenario.objects.create(
                                         name=scenario_name_form,
@@ -1050,8 +1170,8 @@ def show_embedded_scenario_builder():
         col1, col2 = st.columns(2)
         
         with col1:
-            # Filter by Snapshot
-            snapshots_for_filter = Snapshot.objects.all().order_by("-created_at")
+            # Filter by Snapshot - only show snapshots for current model
+            snapshots_for_filter = Snapshot.objects.filter(model_type=current_model).order_by("-created_at")
             snapshot_filter_options = ["All Snapshots"] + [snap.name for snap in snapshots_for_filter]
             selected_snapshot_filter = st.selectbox(
                 "Filter by Snapshot",
@@ -1068,8 +1188,8 @@ def show_embedded_scenario_builder():
                 key="scenario_builder_status_filter"
             )
 
-        # Get filtered scenarios
-        scenarios_query = Scenario.objects.all()
+        # Get filtered scenarios - filter by model type
+        scenarios_query = Scenario.objects.filter(model_type=current_model)
         
         if selected_snapshot_filter != "All Snapshots":
             scenarios_query = scenarios_query.filter(snapshot__name=selected_snapshot_filter)
@@ -1079,7 +1199,7 @@ def show_embedded_scenario_builder():
         
         scenarios = scenarios_query.order_by("-created_at")
         
-        st.subheader(f"Found {scenarios.count()} Scenarios")
+        st.subheader(f"Found {scenarios.count()} {current_model.upper()} Scenarios")
         
         if scenarios.exists():
             # Create scenario table with better styling
@@ -1149,8 +1269,14 @@ def show_embedded_scenario_builder():
                                        help="View Results", use_container_width=True):
                                 st.session_state.selected_snapshot_for_results = scenario.snapshot.name
                                 st.session_state.selected_scenario_for_results = scenario.name
-                                st.session_state.active_vrp_tab = 3
-                                st.query_params.tab = "view_results"
+                                
+                                # Set the appropriate tab based on current model
+                                if current_model == "inventory":
+                                    st.session_state.active_inventory_tab = 3
+                                else:
+                                    st.session_state.active_vrp_tab = 3
+                                
+                                st.query_params.update({"model": current_model, "page": "view-results"})
                                 st.success(f"✅ Switching to View Results for {scenario.name}...")
                                 st.rerun()
                     
@@ -1288,11 +1414,26 @@ def show_embedded_view_results():
         if "global_logs" not in st.session_state:
             st.session_state.global_logs = ["View Results initialized."]
 
+        # Determine current model from URL or session state
+        query_params = st.query_params
+        current_model = query_params.get("model", "vrp")
+        
+        # If not in URL, check session state
+        if not current_model:
+            if 'active_inventory_tab' in st.session_state:
+                current_model = "inventory"
+            else:
+                current_model = "vrp"
+
         # Initialize session state for GPT analysis
         if "gpt_analysis_result" not in st.session_state:
             st.session_state.gpt_analysis_result = None
         if "gpt_analysis_loading" not in st.session_state:
             st.session_state.gpt_analysis_loading = False
+        
+        # Track current scenario to detect changes
+        if "current_results_scenario_id" not in st.session_state:
+            st.session_state.current_results_scenario_id = None
 
         # Get selected scenario info from session state
         selected_snapshot = st.session_state.get("selected_snapshot_for_results")
@@ -1310,8 +1451,8 @@ def show_embedded_view_results():
             col1, col2 = st.columns(2)
             
             with col1:
-                # Snapshot selection dropdown
-                snapshots = Snapshot.objects.all().order_by("-created_at")
+                # Snapshot selection dropdown - filter by current model
+                snapshots = Snapshot.objects.filter(model_type=current_model).order_by("-created_at")
                 if snapshots.exists():
                     snapshot_choices = {snap.name: snap.id for snap in snapshots}
                     selected_snapshot_name = st.selectbox(
@@ -1320,15 +1461,16 @@ def show_embedded_view_results():
                         key="embedded_results_snapshot_select"
                     )
                 else:
-                    st.warning("No snapshots available.")
+                    st.warning(f"No snapshots available for {current_model.upper()} model.")
                     return
             
             with col2:
-                # Scenario selection dropdown (filtered by selected snapshot)
+                # Scenario selection dropdown (filtered by selected snapshot and model)
                 if selected_snapshot_name:
                     selected_snapshot_obj = Snapshot.objects.get(name=selected_snapshot_name)
                     scenarios = Scenario.objects.filter(
                         snapshot=selected_snapshot_obj, 
+                        model_type=current_model,
                         status="solved"
                     ).order_by("-created_at")
                     
@@ -1363,6 +1505,14 @@ def show_embedded_view_results():
                 snapshot__name=selected_snapshot
             )
             
+            # Check if scenario has changed and clear GPT analysis if needed
+            if st.session_state.current_results_scenario_id != scenario.id:
+                st.session_state.current_results_scenario_id = scenario.id
+                # Clear GPT analysis from previous scenario
+                if 'gpt_analysis_result' in st.session_state:
+                    st.session_state.gpt_analysis_result = None
+                    st.session_state.global_logs.append(f"Cleared GPT analysis - switched to scenario {scenario.name} (ID: {scenario.id})")
+            
             if scenario.status != "solved":
                 st.error(f"Scenario '{scenario.name}' is not solved. Current status: {scenario.status}")
                 if st.button("← Back to Scenario Selection", key="embedded_back_button"):
@@ -1370,8 +1520,19 @@ def show_embedded_view_results():
                         del st.session_state.selected_snapshot_for_results
                     if 'selected_scenario_for_results' in st.session_state:
                         del st.session_state.selected_scenario_for_results
-                    st.session_state.active_vrp_tab = 2  # Switch to Scenario Builder tab
-                    st.query_params.tab = "scenario_builder"
+                    # Clear GPT analysis state
+                    if 'gpt_analysis_result' in st.session_state:
+                        st.session_state.gpt_analysis_result = None
+                    if 'current_results_scenario_id' in st.session_state:
+                        st.session_state.current_results_scenario_id = None
+                    
+                    # Set the appropriate tab based on current model
+                    if current_model == "inventory":
+                        st.session_state.active_inventory_tab = 2
+                    else:
+                        st.session_state.active_vrp_tab = 2
+                    
+                    st.query_params.update({"model": current_model, "page": "scenario-builder"})
                     st.rerun()
                 return
 
@@ -1388,6 +1549,11 @@ def show_embedded_view_results():
                             del st.session_state.selected_snapshot_for_results
                         if 'selected_scenario_for_results' in st.session_state:
                             del st.session_state.selected_scenario_for_results
+                        # Clear GPT analysis state
+                        if 'gpt_analysis_result' in st.session_state:
+                            st.session_state.gpt_analysis_result = None
+                        if 'current_results_scenario_id' in st.session_state:
+                            st.session_state.current_results_scenario_id = None
                         st.rerun()
                     return
 
@@ -1403,8 +1569,19 @@ def show_embedded_view_results():
                     del st.session_state.selected_snapshot_for_results
                 if 'selected_scenario_for_results' in st.session_state:
                     del st.session_state.selected_scenario_for_results
-                st.session_state.active_vrp_tab = 2  # Switch to Scenario Builder tab
-                st.query_params.tab = "scenario_builder"
+                # Clear GPT analysis state
+                if 'gpt_analysis_result' in st.session_state:
+                    st.session_state.gpt_analysis_result = None
+                if 'current_results_scenario_id' in st.session_state:
+                    st.session_state.current_results_scenario_id = None
+                
+                # Set the appropriate tab based on current model
+                if current_model == "inventory":
+                    st.session_state.active_inventory_tab = 2
+                else:
+                    st.session_state.active_vrp_tab = 2
+                
+                st.query_params.update({"model": current_model, "page": "scenario-builder"})
                 st.rerun()
 
             # Scenario Info
@@ -1662,12 +1839,34 @@ def show_embedded_view_results():
             # GPT-powered Solution Analysis
             st.subheader("🤖 GPT-powered Solution Analysis")
             st.write("Ask questions about this solution in natural language. Examples:")
-            st.info("""
-            - "What is the average utilization by vehicle?"
-            - "Show a table of stops per route"
-            - "Plot the distance distribution across routes"
-            - "Which route has the highest demand?"
-            """)
+            
+            # Show different examples based on model type
+            if model_type == 'inventory':
+                st.info("""
+                - "What is the average inventory turnover ratio?"
+                - "Show top 10 items by holding cost"
+                - "Which items have the highest safety stock levels?"
+                - "Plot EOQ vs demand for all items"
+                - "What is the total ordering cost vs holding cost breakdown?"
+                - "Which category has the highest inventory value?"
+                - "Show items with safety stock above 50 units"
+                - "What percentage of items meet the 95% service level?"
+                - "List items with more than 12 orders per year"
+                - "Compare inventory costs by supplier"
+                """)
+            else:
+                st.info("""
+                - "What is the average utilization by vehicle?"
+                - "Show a table of stops per route"
+                - "Plot the distance distribution across routes"
+                - "Which route has the highest demand?"
+                - "Create a bar chart showing distance per route"
+                - "Show a scatter plot of route length vs number of stops"
+                - "Plot vehicle utilization as a pie chart"
+                - "Display histogram of customer demands by route"
+                - "Compare route efficiency with a stacked bar chart"
+                - "Show route distances on a horizontal bar chart"
+                """)
             
             # User input for GPT analysis
             user_question = st.text_input("Enter your question about the solution:", key="embedded_gpt_question")
@@ -1748,7 +1947,34 @@ def show_embedded_view_results():
                     except Exception as e:
                         st.error(f"Error displaying table: {str(e)}")
                         st.json(result_data)
+                elif result_type == "plot":
+                    try:
+                        # Display base64 encoded image
+                        import base64
+                        from io import BytesIO
+                        from PIL import Image
+                        
+                        # Decode base64 image
+                        image_data = base64.b64decode(result_data)
+                        image = Image.open(BytesIO(image_data))
+                        
+                        # Display the image
+                        st.image(image, caption="Generated Plot", width=600)
+                        
+                        # Add download button
+                        st.download_button(
+                            label="📥 Download Plot",
+                            data=image_data,
+                            file_name=f"plot_scenario_{scenario.id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png",
+                            mime="image/png"
+                        )
+                        
+                        st.session_state.global_logs.append(f"Successfully displayed plot")
+                    except Exception as e:
+                        st.error(f"Error displaying plot: {str(e)}")
+                        st.session_state.global_logs.append(f"Plot display error: {str(e)}")
                 elif result_type == "chart":
+                    # Legacy chart handling - keeping for backward compatibility
                     try:
                         st.session_state.global_logs.append(f"Chart data: {result_data}")
                         
@@ -1756,6 +1982,14 @@ def show_embedded_view_results():
                         title = result_data.get("title", "Chart")
                         labels = result_data.get("labels", [])
                         values = result_data.get("values", [])
+                        
+                        # Debug information
+                        with st.expander("🐛 Debug: Chart Data"):
+                            st.write(f"**Chart Type:** {chart_type}")
+                            st.write(f"**Title:** {title}")
+                            st.write(f"**Labels:** {labels}")
+                            st.write(f"**Values:** {values}")
+                            st.write(f"**Raw Data:** {result_data}")
                         
                         if not isinstance(labels, list):
                             labels = [str(labels)]
@@ -1765,6 +1999,11 @@ def show_embedded_view_results():
                             except (ValueError, TypeError):
                                 values = [0]
                         
+                        # Check if values are empty or all zeros
+                        if not values or all(v == 0 for v in values):
+                            st.warning("⚠️ Chart data appears to be empty or all zeros. This might indicate an issue with data parsing.")
+                            st.session_state.global_logs.append(f"Warning: Empty or zero values in chart data")
+                        
                         if len(labels) != len(values):
                             if len(labels) < len(values):
                                 labels.extend([f"Item {i+1}" for i in range(len(labels), len(values))])
@@ -1772,6 +2011,10 @@ def show_embedded_view_results():
                                 values.extend([0] * (len(labels) - len(values)))
                         
                         chart_df = pd.DataFrame({"labels": labels, "values": values})
+                        
+                        # Show the dataframe being used for the chart
+                        with st.expander("📊 Chart DataFrame"):
+                            st.dataframe(chart_df)
                         
                         if chart_type == "bar":
                             fig = px.bar(chart_df, x="labels", y="values", title=title)
@@ -1785,6 +2028,7 @@ def show_embedded_view_results():
                         st.plotly_chart(fig, use_container_width=True)
                     except Exception as e:
                         st.error(f"Error creating chart: {str(e)}")
+                        st.session_state.global_logs.append(f"Chart error: {str(e)}")
                         st.dataframe(pd.DataFrame({"labels": labels, "values": values}))
                 else:
                     st.json(result_data)
@@ -1846,13 +2090,24 @@ def show_embedded_compare_outputs():
         if "global_logs" not in st.session_state:
             st.session_state.global_logs = ["Compare Outputs initialized."]
 
+        # Determine current model from URL or session state
+        query_params = st.query_params
+        current_model = query_params.get("model", "vrp")
+        
+        # If not in URL, check session state
+        if not current_model:
+            if 'active_inventory_tab' in st.session_state:
+                current_model = "inventory"
+            else:
+                current_model = "vrp"
+
         st.title("Compare Scenario Outputs")
 
         # Main comparison interface
         st.header("Select Scenarios to Compare")
         
-        # Select Snapshot dropdown
-        snapshots = Snapshot.objects.all().order_by("-created_at")
+        # Select Snapshot dropdown - filter by current model
+        snapshots = Snapshot.objects.filter(model_type=current_model).order_by("-created_at")
         if snapshots.exists():
             snapshot_choices = [""] + [snap.name for snap in snapshots]
             selected_snapshot_name = st.selectbox(
@@ -1867,6 +2122,7 @@ def show_embedded_compare_outputs():
                 selected_snapshot_obj = Snapshot.objects.get(name=selected_snapshot_name)
                 solved_scenarios = Scenario.objects.filter(
                     snapshot=selected_snapshot_obj, 
+                    model_type=current_model,
                     status="solved"
                 ).order_by("-created_at")
                 
@@ -2250,6 +2506,10 @@ def show_inventory_function():
     st.title("📦 Inventory Optimization")
     st.write("Optimize inventory levels, ordering policies, and safety stock to minimize costs while maintaining service levels")
     
+    # Ensure sidebar is visible by default
+    if 'sidebar_state' not in st.session_state:
+        st.session_state.sidebar_state = 'expanded'
+    
     # Global CSS for full-width layout with small margins
     st.markdown("""
         <style>
@@ -2271,22 +2531,26 @@ def show_inventory_function():
         </style>
     """, unsafe_allow_html=True)
     
-    # Get current tab from URL query parameters
+    # Get current page from URL query parameters
     query_params = st.query_params
-    current_tab = query_params.get("tab", "data_manager")  # Default to data_manager instead of snapshots
+    current_page = query_params.get("page", "data-manager")  # Default to data-manager
     
-    # Map tab names to indices
-    tab_mapping = {
-        "data_manager": 0,
+    # Ensure model parameter is set
+    if query_params.get("model") != "inventory":
+        st.query_params.update({"model": "inventory", "page": current_page})
+    
+    # Map page names to indices
+    page_mapping = {
+        "data-manager": 0,
         "snapshots": 1,
-        "scenario_builder": 2,
-        "view_results": 3,
-        "compare_outputs": 4
+        "scenario-builder": 2,
+        "view-results": 3,
+        "compare-outputs": 4
     }
     
     # Set active tab based on URL or session state
-    if current_tab in tab_mapping:
-        st.session_state.active_inventory_tab = tab_mapping[current_tab]
+    if current_page in page_mapping:
+        st.session_state.active_inventory_tab = page_mapping[current_page]
     elif 'active_inventory_tab' not in st.session_state:
         st.session_state.active_inventory_tab = 0  # Default to Data Manager tab
     
@@ -2294,25 +2558,25 @@ def show_inventory_function():
     if 'switch_to_tab' in st.session_state:
         if st.session_state.switch_to_tab == 'scenario_builder':
             st.session_state.active_inventory_tab = 2
-            st.query_params.tab = "scenario_builder"
+            st.query_params.update({"model": "inventory", "page": "scenario-builder"})
         elif st.session_state.switch_to_tab == 'view_results':
             st.session_state.active_inventory_tab = 3
-            st.query_params.tab = "view_results"
+            st.query_params.update({"model": "inventory", "page": "view-results"})
         del st.session_state.switch_to_tab
     
     # Create custom tab buttons
     tab_cols = st.columns(5)
     tab_names = ["📊 Data Manager", "📸 Snapshots", "🏗️ Scenario Builder", "📈 View Results", "⚖️ Compare Outputs"]
-    tab_keys = ["data_manager", "snapshots", "scenario_builder", "view_results", "compare_outputs"]
+    page_keys = ["data-manager", "snapshots", "scenario-builder", "view-results", "compare-outputs"]
     
-    for i, (col, tab_name, tab_key) in enumerate(zip(tab_cols, tab_names, tab_keys)):
+    for i, (col, tab_name, page_key) in enumerate(zip(tab_cols, tab_names, page_keys)):
         with col:
             if st.session_state.active_inventory_tab == i:
                 st.markdown(f"**🔹 {tab_name}**")
             else:
                 if st.button(tab_name, key=f"inv_tab_{i}"):
                     st.session_state.active_inventory_tab = i
-                    st.query_params.tab = tab_key
+                    st.query_params.update({"model": "inventory", "page": page_key})
                     st.rerun()
     
     st.markdown("---")
